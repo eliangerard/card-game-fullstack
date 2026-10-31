@@ -29,6 +29,12 @@ const Backs = memo(function Backs({ playerId, count, w, h, side, style }) {
   );
 });
 
+// Ancho disponible para el nombre sin invadir el asiento de al lado
+const nameMaxOf = (seat) => {
+  if (seat.pos === 'top') return seat.compact ? seat.panelW * 0.55 : seat.w - seat.panelW;
+  return seat.w - seat.avatar - 12 - 10;
+};
+
 // Asiento de un rival: avatar, mano boca abajo y cuerpo
 export const Seat = memo(function Seat({ seat, gp, info, hl, picked, hover, onSlot, onPlayer, timer, gap }) {
   const targetable = !!hl?.players?.has(gp.id);
@@ -62,6 +68,7 @@ export const Seat = memo(function Seat({ seat, gp, info, hl, picked, hover, onSl
       hovered={isHover}
       onClick={targetable ? () => onPlayer(gp.id) : undefined}
       compact={seat.compact}
+      nameMax={nameMaxOf(seat)}
     />
   );
 

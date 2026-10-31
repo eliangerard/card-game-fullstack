@@ -1248,19 +1248,6 @@
   pointer-events: none;
 }
 
-.gt-offline {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(30, 12, 95, 0.92);
-  border: 3px solid var(--accent);
-  border-radius: 999px;
-  padding: 10px 24px;
-  font-size: 22px;
-  z-index: 75;
-  animation: gt-bob 1.2s ease-in-out infinite;
-}
 
 /* Banner "¡Tu turno!" */
 .gt-banner {

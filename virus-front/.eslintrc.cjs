@@ -12,10 +12,9 @@ module.exports = {
   settings: { react: { version: '18.2' } },
   plugins: ['react-refresh'],
   rules: {
-    'react-refresh/only-export-components': [
-      'warn',
-      { allowConstantExport: true },
-      { reactPropTypes: false}
-    ],
+    // Varios módulos exportan a propósito helpers junto a sus componentes (buses de efectos, constantes)
+    'react-refresh/only-export-components': 'off',
+    // JS plano sin PropTypes
+    'react/prop-types': 'off',
   },
 }

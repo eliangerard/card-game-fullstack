@@ -7,11 +7,8 @@ import { ProfileCard } from './ProfileCard';
 import { RoomList } from './RoomList';
 import { CreateRoomForm, ROOM_NAME_MAX } from './CreateRoomForm';
 import { NameModal } from './NameModal';
-import { Toaster } from './Toaster';
 import { toastError } from './toasts';
 import { useLobbyMusic } from './music';
-import { DEMO } from './demo';
-import { ConnectionBanner } from './ConnectionBanner';
 import '../home/home.css';
 import './lobby.css';
 
@@ -91,8 +88,6 @@ export const LobbyScreen = () => {
           action?.();
         }}
       />
-      <Toaster />
-      {DEMO === 'offline' && <ConnectionBanner />}
     </div>
   );
 };

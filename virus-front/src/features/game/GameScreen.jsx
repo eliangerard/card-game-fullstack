@@ -101,8 +101,6 @@ const btnAnim = {
 export const GameScreen = () => {
   const session = useStore((s) => s.session);
   const room = useStore((s) => s.room);
-  const connected = useStore((s) => s.connected);
-  const isDemo = useStore((s) => !!s.demo);
   const storeGame = useStore((s) => s.game);
   const me = storeGame?.you ?? session?.playerId;
 
@@ -361,8 +359,6 @@ export const GameScreen = () => {
               <ExitIcon />
             </button>
           </div>
-
-          {!connected && !isDemo && <div className="gt-offline">Reconectando con el servidor…</div>}
 
           <FxLayer />
           <TurnBanner />

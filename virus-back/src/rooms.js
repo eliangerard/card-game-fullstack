@@ -422,6 +422,8 @@ export class RoomManager {
     const socket = this.socketOf(session);
     if (socket) socket.join(channel(room.id));
     this.broadcastRoom(room); // le llega también a él y avisa a los demás que volvió
+    // El historial del chat (el cliente descarta los repetidos por id): tras una recarga no aparece vacío
+    for (const msg of room.chat) this.emitTo(session.playerId, 'room:chat', msg);
     // Si era su turno se le devuelve margen y eso ya reenvía los estados; si no, sólo el suyo
     const resent = room.status === 'playing' && room.runner && room.runner.onConnectionChange(session.playerId);
     if (!resent) this.sendGameState(room, session.playerId);

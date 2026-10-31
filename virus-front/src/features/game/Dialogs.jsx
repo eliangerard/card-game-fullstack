@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import avatars from '../../helpers/avatars';
+import avatars from '../../lib/avatars';
 import { sfx } from '../../lib/sfx';
 import { reducedMotion } from './fx';
 

@@ -5,7 +5,6 @@ import { Backdrop } from '../home/Backdrop';
 import { TopBar } from './TopBar';
 import { Avatar } from './Avatar';
 import { Chat } from './Chat';
-import { Toaster } from './Toaster';
 import { toast, toastError } from './toasts';
 import { useLobbyMusic } from './music';
 import { IconClose, IconCrown, IconDoor, IconPlay, IconRobot, IconWifiOff } from './icons';
@@ -249,7 +248,6 @@ export const RoomScreen = () => {
         </motion.aside>
       </main>
 
-      <Toaster />
     </div>
   );
 };

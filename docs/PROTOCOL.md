@@ -158,3 +158,26 @@ Tiempos:
 - Pantallas: `src/features/home` (inicio y perfil), `src/features/lobby` (lista de salas y sala de espera con chat), `src/features/game` (la mesa).
 - Animaciones con `framer-motion`, confeti con `canvas-confetti`. Sonidos sintetizados con WebAudio en `src/lib/sfx.js`.
 - Referencia visual de la mesa: `virus-front/src/assets/Group 12sa.png`. Paleta: `--background #885FFE`, `--strokes #653FD3`, `--accent #ffae00`. Fuente: `super_sedan`.
+
+## 4. Añadidos de la implementación (no estaban en el contrato original)
+
+Motor:
+- Acción `{ type: 'pass' }`: sólo es legal si no tienes ninguna carta en la mano (mazo y descarte agotados), para que la partida no se bloquee. El cliente muestra el botón "Pasar" en ese caso.
+- `createGame` lanza `GameError` con código `BAD_SETUP` si recibe menos de 2 o más de 6 jugadores, o ids repetidos.
+- En un turno saltado (guante) el orden de eventos es `turn(b)`, `turnSkipped(b)`, `drew(b)`, `turn(c)`: puede haber varios `turn` en un lote; el último es el turno real.
+- Si al terminar una acción varios jugadores cumplen la victoria, gana el que actuó; si no está entre ellos, el primero en orden de asientos.
+
+Servidor:
+- Códigos de error extra: `BAD_PAYLOAD`, `NO_SESSION`, `NOT_IN_ROOM`, `NOT_IN_LOBBY`, `NOT_PLAYING`, `NOT_FINISHED`, `PLAYER_NOT_FOUND`, `RATE_LIMITED` (chat y antiflood: 40 eventos por socket cada 2 s), `SERVER_FULL` (más de 200 salas) e `INTERNAL`.
+- `session:replaced` (servidor → cliente): la misma sesión se abrió en otro socket (otra pestaña). El servidor desconecta el socket viejo y no se reconecta solo; el cliente muestra "Abriste Roña en otra pestaña" con un botón para recuperarla aquí.
+- Al empezar la partida se manda un primer lote `{ seq: 1, events: [{ type: 'turn', … }] }` antes del primer `game:state`.
+- Si un jugador vuelve en su propio turno, se le garantiza un margen mínimo de 15 s (`RECONNECT_TURN_MS`).
+- Al recuperar la sesión (`session:hello` con token) se reenvían `room:state`, el historial del chat (hasta 50 mensajes) y `game:state`, todo antes del ack. El cliente descarta los mensajes de chat repetidos por `id`.
+- Si alguien sale a media partida desaparece de `room.players` pero sigue en el `PlayerView` con `out: true`; la mesa usa el nombre del `PlayerView` y un avatar por defecto.
+- Al empezar, los asientos se barajan (no empieza siempre el anfitrión).
+
+Cliente:
+- En desarrollo el store queda en `window.__ronaStore` (las pruebas e2e lo leen para sincronizarse; nunca lo escriben).
+- `useStore.hello` suelta la sala local si el servidor responde `roomId: null` (se reinició o pasó la gracia).
+- `updateProfile` sólo guarda el perfil (store y `localStorage['rona.profile']`) cuando el servidor lo acepta.
+- Los lotes de `game:events` con `seq` menor o igual al último encolado se ignoran.

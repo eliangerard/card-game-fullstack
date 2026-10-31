@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import avatars from '../../helpers/avatars';
+import avatars from '../../lib/avatars';
 import { avatarAnchor } from './fx';
 
 // Anillo de cuenta regresiva del turno: una animación CSS con la duración restante
@@ -40,9 +40,30 @@ const TurnRing = ({ size, timer }) => {
   );
 };
 
+// Si el nombre tiene un ancho máximo (para no invadir el asiento vecino) puede ocupar dos renglones,
+// y la letra se achica hasta que quepa la palabra más larga, sin bajar de 12 px; lo que sobre se corta con "…"
+const ALIGN = { right: 'left', left: 'right', bottom: 'center' };
+const nameStyle = (name, size, nameMax, compact, nameSide) => {
+  if (!nameMax) return undefined;
+  const base = Math.max(13, Math.min(40, size * (compact ? 0.45 : 0.27)));
+  const longest = Math.max(1, ...name.split(/\s+/).map((w) => [...w].length));
+  const fit = (nameMax - 14) / (longest * 0.72);
+  return {
+    maxWidth: nameMax,
+    fontSize: Math.max(12, Math.min(base, fit)),
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    lineHeight: 1.08,
+    textAlign: ALIGN[nameSide] || 'center',
+  };
+};
+
 // Avatar de un jugador con su color, nombre, anillo de turno y estado
 export const Avatar = memo(function Avatar({
-  info, gp, size, timer, isMe = false, nameSide = 'right', targetable = false, hovered = false, onClick, compact = false,
+  info, gp, size, timer, isMe = false, nameSide = 'right', targetable = false, hovered = false, onClick, compact = false, nameMax,
 }) {
   const color = info?.color || '#ffae00';
   const img = avatars[info?.avatar ?? 0] || avatars[0];
@@ -91,7 +112,7 @@ export const Avatar = memo(function Avatar({
       </motion.div>
       {nameSide !== 'none' && (
         <div className="gt-avatar-name">
-          <span>{gp?.name || info?.name || '…'}</span>
+          <span style={nameStyle(gp?.name || info?.name || '…', size, nameMax, compact, nameSide)}>{gp?.name || info?.name || '…'}</span>
           {isMe && <small>tú</small>}
         </div>
       )}

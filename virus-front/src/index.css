@@ -704,3 +704,18 @@ img {
   width: 18px;
   height: 18px;
 }
+
+.conn-banner__btn {
+  margin-left: 0.3rem;
+  padding: 0.3rem 0.9rem;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.conn-banner__btn:hover {
+  transform: translateY(-1px);
+}

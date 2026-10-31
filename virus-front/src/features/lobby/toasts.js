@@ -10,6 +10,12 @@ const ERROR_TEXT = {
   NOT_ENOUGH_PLAYERS: 'Se necesitan al menos 2 jugadores',
   TIMEOUT: 'El servidor no respondió',
   RATE_LIMIT: '¡Más despacio! Espera un momento',
+  RATE_LIMITED: '¡Más despacio! Espera un momento',
+  NOT_IN_LOBBY: 'La partida ya empezó',
+  NOT_IN_ROOM: 'Ya no estás en esa sala',
+  NO_SESSION: 'Todavía no hay conexión con el servidor',
+  SERVER_FULL: 'Hay demasiadas salas abiertas, intenta más tarde',
+  PLAYER_NOT_FOUND: 'Ese jugador ya no está en la sala',
 };
 
 export const errorText = (err) =>

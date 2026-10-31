@@ -3,11 +3,14 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 import { IconWifiOff } from './icons';
 
-// Indicador global de conexión. Móntalo una vez en App (encima de todo).
+// Indicador global de conexión (montado una vez en App, encima de todo).
 // Antes de la primera conexión dice "Conectando…" (y sólo tras una breve espera);
-// si se pierde la conexión después, dice "Reconectando…".
+// si se pierde la conexión después, dice "Reconectando…". Si otra pestaña tomó
+// la sesión, el servidor corta esta y se ofrece recuperarla aquí.
 export const ConnectionBanner = () => {
   const connected = useStore((s) => s.connected);
+  const replaced = useStore((s) => s.replaced);
+  const isDemo = useStore((s) => !!s.demo);
   const everConnected = useRef(connected);
   const [visible, setVisible] = useState(false);
 
@@ -21,12 +24,17 @@ export const ConnectionBanner = () => {
     return () => clearTimeout(t);
   }, [connected]);
 
+  // La mesa de demostración no usa el servidor
+  if (isDemo) return null;
+
   const label = everConnected.current ? 'Reconectando' : 'Conectando con el servidor';
+  const show = replaced || (visible && !connected);
 
   return (
     <AnimatePresence>
-      {visible && !connected && (
+      {show && (
         <motion.div
+          key={replaced ? 'replaced' : 'offline'}
           className="conn-banner"
           role="status"
           initial={{ y: -80, x: '-50%', opacity: 0 }}
@@ -36,12 +44,21 @@ export const ConnectionBanner = () => {
         >
           <motion.span
             className="conn-banner__icon"
-            animate={{ opacity: [1, 0.35, 1] }}
-            transition={{ repeat: Infinity, duration: 1.2 }}
+            animate={replaced ? { opacity: 1 } : { opacity: [1, 0.35, 1] }}
+            transition={replaced ? { duration: 0.2 } : { repeat: Infinity, duration: 1.2 }}
           >
             <IconWifiOff />
           </motion.span>
-          <span className="ui-dots">{label}</span>
+          {replaced ? (
+            <>
+              <span>Abriste Roña en otra pestaña</span>
+              <button type="button" className="conn-banner__btn" onClick={() => useStore.getState().reclaim()}>
+                Jugar aquí
+              </button>
+            </>
+          ) : (
+            <span className="ui-dots">{label}</span>
+          )}
         </motion.div>
       )}
     </AnimatePresence>
