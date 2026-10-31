@@ -1,29 +1,21 @@
-import { useContext, useEffect, useRef, useState } from 'react';
-// import './App.css'
-import { Login } from './components/Login';
-import Lobby from './components/Lobby';
-import { Game } from './components/Game';
-import dots from '../src/assets/dots.svg';
-import doodles from '../src/assets/doodles.png';
-import { UserProvider } from './context/UserProvider';
+import { useState } from 'react';
+import { useStore } from './store/useStore';
+import { HomeScreen } from './features/home/HomeScreen';
+import { LobbyScreen } from './features/lobby/LobbyScreen';
+import { RoomScreen } from './features/lobby/RoomScreen';
+import { GameScreen } from './features/game/GameScreen';
+
+// Enrutado por estado: inicio → lobby → sala → partida
 const App = () => {
+  const [entered, setEntered] = useState(false);
+  const session = useStore((s) => s.session);
+  const room = useStore((s) => s.room);
+  const game = useStore((s) => s.game);
 
-  const [loged, setLoged] = useState(false);
-  const [started, setStarted] = useState(false);
-
-  
-  return (
-    <>
-      <UserProvider>
-        <div className="loginBackground"><img src={!started ? dots : doodles} alt="dots" /></div>
-        {!loged && <Login setLoged={setLoged} />}
-        {loged && !started && <Lobby setStarted={setStarted} />}
-        {/* {loged && joined && !started && <Lobby socket={socket} user={user} setJoined={setJoined} setStarted={setStarted} />} */}
-        {loged && started && <Game />}
-      </UserProvider>
-    </>
-
-  );
+  if (room && room.status !== 'lobby' && game) return <GameScreen />;
+  if (room) return <RoomScreen />;
+  if (!entered || !session) return <HomeScreen onEnter={() => setEntered(true)} ready={!!session} />;
+  return <LobbyScreen />;
 };
 
 export default App;
