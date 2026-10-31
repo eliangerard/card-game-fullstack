@@ -1,0 +1,16 @@
+# Contexto de build = raíz del repo; sólo hacen falta shared/, virus-back/ y virus-front/
+**/node_modules
+**/dist
+**/.vite
+**/*.log
+.git
+.gitignore
+.history
+.env
+.env.*
+e2e
+docs
+*.md
+**/test
+docker-compose.yml
+**/Dockerfile

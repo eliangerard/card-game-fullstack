@@ -1,29 +1,37 @@
-import { useContext, useEffect, useRef, useState } from 'react';
-// import './App.css'
-import { Login } from './components/Login';
-import Lobby from './components/Lobby';
-import { Game } from './components/Game';
-import dots from '../src/assets/dots.svg';
-import doodles from '../src/assets/doodles.png';
-import { UserProvider } from './context/UserProvider';
-const App = () => {
+import { useEffect, useState } from 'react';
+import { useStore } from './store/useStore';
+import { HomeScreen } from './features/home/HomeScreen';
+import { LobbyScreen } from './features/lobby/LobbyScreen';
+import { RoomScreen } from './features/lobby/RoomScreen';
+import { GameScreen } from './features/game/GameScreen';
+import { ConnectionBanner } from './features/lobby/ConnectionBanner';
+import { Toaster } from './features/lobby/Toaster';
 
-  const [loged, setLoged] = useState(false);
-  const [started, setStarted] = useState(false);
+// Enrutado por estado: inicio → lobby → sala → partida
+const Screen = () => {
+  const [entered, setEntered] = useState(false);
+  const session = useStore((s) => s.session);
+  const room = useStore((s) => s.room);
+  const game = useStore((s) => s.game);
 
-  
-  return (
-    <>
-      <UserProvider>
-        <div className="loginBackground"><img src={!started ? dots : doodles} alt="dots" /></div>
-        {!loged && <Login setLoged={setLoged} />}
-        {loged && !started && <Lobby setStarted={setStarted} />}
-        {/* {loged && joined && !started && <Lobby socket={socket} user={user} setJoined={setJoined} setStarted={setStarted} />} */}
-        {loged && started && <Game />}
-      </UserProvider>
-    </>
+  // Si la sesión se recuperó dentro de una sala (recarga), al salir se vuelve al lobby y no al inicio
+  useEffect(() => {
+    if (room && !entered) setEntered(true);
+  }, [room, entered]);
 
-  );
+  if (room && room.status !== 'lobby' && game) return <GameScreen />;
+  if (room) return <RoomScreen />;
+  if (!entered || !session) return <HomeScreen onEnter={() => setEntered(true)} ready={!!session} />;
+  return <LobbyScreen />;
 };
+
+// Los avisos y el indicador de conexión se montan una sola vez, encima de cualquier pantalla
+const App = () => (
+  <>
+    <Screen />
+    <Toaster />
+    <ConnectionBanner />
+  </>
+);
 
 export default App;

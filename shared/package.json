@@ -1,0 +1,10 @@
+{
+  "name": "rona-shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "engine/index.js",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}

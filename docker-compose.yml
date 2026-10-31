@@ -1,0 +1,84 @@
+# Roña en Docker: servidor (rona-server) + nginx con el cliente (rona-web) + Cloudflare Tunnel.
+#   cp .env.example .env    # y pon TUNNEL_TOKEN
+#   docker compose up -d --build
+# Sin túnel (pruebas locales):  docker compose up -d --build rona-server rona-web  → http://127.0.0.1:8090
+# En el panel de Cloudflare, la ruta pública del túnel apunta a http://rona-web:80
+name: rona
+
+services:
+  rona-server:
+    build:
+      context: .
+      dockerfile: virus-back/Dockerfile
+    image: rona-server:latest
+    container_name: rona-server
+    restart: unless-stopped
+    environment:
+      PORT: "3001"
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-}
+      MAX_CONNECTIONS_PER_IP: ${MAX_CONNECTIONS_PER_IP:-20}
+      SESSIONS_PER_IP_PER_MIN: ${SESSIONS_PER_IP_PER_MIN:-20}
+      MAX_ROOMS_PER_IP: ${MAX_ROOMS_PER_IP:-8}
+      TURN_MS: ${TURN_MS:-40000}
+      GRACE_MS: ${GRACE_MS:-60000}
+      BOT_MIN_MS: ${BOT_MIN_MS:-900}
+      BOT_MAX_MS: ${BOT_MAX_MS:-1600}
+      LOG: ${LOG:-1}
+    # Sin puertos publicados: sólo lo alcanza rona-web por la red interna
+    networks: [rona]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  rona-web:
+    build:
+      context: .
+      dockerfile: virus-front/Dockerfile
+    image: rona-web:latest
+    container_name: rona-web
+    restart: unless-stopped
+    depends_on:
+      rona-server:
+        condition: service_healthy
+    # Sólo en loopback, para probar desde el propio host (los demás puertos del host ya están ocupados)
+    ports:
+      - "127.0.0.1:8090:80"
+    networks: [rona]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    logging: *logging
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.4
+    container_name: rona-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      rona-web:
+        condition: service_healthy
+    networks: [rona]
+    healthcheck:
+      # /ready responde 200 cuando el túnel tiene al menos una conexión con Cloudflare
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging: *logging
+
+networks:
+  rona:
+    name: rona
