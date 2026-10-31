@@ -150,7 +150,7 @@ Tiempos:
 
 ### Límites contra abusos
 - Más de 40 eventos en 2 s por socket → `RATE_LIMITED`.
-- Por IP (configurables; `0` desactiva el tope): 20 conexiones abiertas a la vez (`MAX_CONNECTIONS_PER_IP`; la de más se rechaza con `connect_error` `TOO_MANY_CONNECTIONS`), 20 sesiones nuevas por minuto (`SESSIONS_PER_IP_PER_MIN`) y 8 salas abiertas (`MAX_ROOMS_PER_IP`); estos dos responden `RATE_LIMITED`. Detrás de un proxy propio, `TRUST_PROXY=1` toma la IP de `X-Forwarded-For`.
+- Por IP (configurables; `0` desactiva el tope): 20 conexiones abiertas a la vez (`MAX_CONNECTIONS_PER_IP`; la de más se rechaza con `connect_error` `TOO_MANY_CONNECTIONS`), 20 sesiones nuevas por minuto (`SESSIONS_PER_IP_PER_MIN`) y 8 salas abiertas (`MAX_ROOMS_PER_IP`); estos dos responden `RATE_LIMITED`. Detrás de N proxies propios, `TRUST_PROXY=N` toma la IP de `X-Forwarded-For` (la N-ésima desde la derecha: lo de más a la izquierda lo puede falsear el cliente). En Docker, nginx reemplaza `X-Forwarded-For` con `CF-Connecting-IP`.
 - Unirse o crear salas: 6 por sesión cada 30 s (`RATE_LIMITED`).
 - Un mensaje de más de 16 KB corta la conexión sin ack (`maxHttpBufferSize` de Socket.IO).
 - Reconectar en tu propio turno da margen (`RECONNECT_TURN_MS`) una sola vez por turno y como mucho 3 veces por partida.

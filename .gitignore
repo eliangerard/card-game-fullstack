@@ -4,3 +4,6 @@ dist/
 *.log
 e2e/shots/
 e2e/video/
+
+# Secretos del despliegue (TUNNEL_TOKEN): nunca al repo
+.env

@@ -1,6 +1,13 @@
 import io from 'socket.io-client';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || `${window.location.protocol}//${window.location.hostname}:3001`;
+// VITE_SERVER_URL manda si está definida. Si no: en producción el servidor está detrás del mismo
+// origen (nginx reenvía /socket.io/), y en desarrollo vite y el servidor van en puertos distintos
+// del mismo host (5173 y 3001).
+const SERVER_URL =
+  import.meta.env.VITE_SERVER_URL ||
+  (import.meta.env.PROD
+    ? window.location.origin
+    : `${window.location.protocol}//${window.location.hostname}:3001`);
 
 // Socket único de la app; se conecta al importar
 export const socket = io(SERVER_URL, { transports: ['websocket'], autoConnect: true });

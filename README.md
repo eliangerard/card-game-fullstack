@@ -40,8 +40,8 @@ npm run dev
 ```
 
 Abre http://localhost:5173 en dos navegadores (o una ventana normal y una de incógnito) para jugar
-contra ti mismo, o agrega bots desde la sala. El cliente busca el servidor en `http://<host>:3001`;
-para otra URL, define `VITE_SERVER_URL`. Como vite escucha en todas las interfaces, desde otro equipo
+contra ti mismo, o agrega bots desde la sala. En desarrollo el cliente busca el servidor en
+`http://<host>:3001`; compilado (producción) usa el mismo origen de la página. Para otra URL, define `VITE_SERVER_URL`. Como vite escucha en todas las interfaces, desde otro equipo
 de la red local basta con abrir `http://<ip-de-tu-pc>:5173`.
 
 ### Variables del servidor
@@ -59,7 +59,7 @@ de la red local basta con abrir `http://<ip-de-tu-pc>:5173`.
 | `MAX_CONNECTIONS_PER_IP` | `20` | sockets abiertos a la vez por IP (`0` = sin tope) |
 | `SESSIONS_PER_IP_PER_MIN` | `20` | sesiones nuevas por minuto por IP (`0` = sin tope) |
 | `MAX_ROOMS_PER_IP` | `8` | salas abiertas creadas desde una IP (`0` = sin tope) |
-| `TRUST_PROXY` | apagado | `TRUST_PROXY=1` toma la IP de `X-Forwarded-For` (sólo detrás de un proxy propio; si no, todos cuentan como la IP del proxy) |
+| `TRUST_PROXY` | apagado | número de proxies propios delante (`1` con el nginx de Docker): toma la IP de `X-Forwarded-For`, la N-ésima desde la derecha. Sólo detrás de un proxy propio; sin él, todos cuentan como la IP del proxy |
 
 Los topes por IP suponen que no hay muchos jugadores detrás de la misma IP (una escuela, una red con NAT);
 en ese caso súbelos. Ver `docs/PROTOCOL.md` ("Límites contra abusos").
@@ -78,15 +78,80 @@ cd virus-front && npm run build      # genera virus-front/dist (estático)
 cd ../virus-back && npm start        # PORT=3001
 ```
 
-Sirve `virus-front/dist` con cualquier servidor estático. Si el servidor no está en `<host>:3001`,
-compila el cliente con `VITE_SERVER_URL=https://tu-servidor npm run build`, y en el servidor
-define `CLIENT_ORIGIN` con el dominio del cliente.
+Sirve `virus-front/dist` con cualquier servidor estático que además reenvíe `/socket.io/` (con upgrade
+de websockets) al servidor: el cliente compilado se conecta al mismo origen. Si el servidor vive en otro
+dominio, compila el cliente con `VITE_SERVER_URL=https://tu-servidor npm run build`, y en el servidor
+define `CLIENT_ORIGIN` con el dominio del cliente. La forma armada de todo esto está en la sección siguiente.
+
+## Despliegue con Docker + Cloudflare Tunnel
+
+```
+docker-compose.yml        rona-server + rona-web + cloudflared en la red `rona`
+virus-back/Dockerfile     node:22-alpine, sólo dependencias de producción, usuario `node`, HEALTHCHECK a /health
+virus-front/Dockerfile    build con vite (node:22-alpine) → nginx:alpine
+virus-front/nginx/default.conf   estáticos, fallback SPA, gzip, caché de /assets/, proxy de /socket.io/ y /health
+.env.example              TUNNEL_TOKEN y variables del servidor (copiar a .env, que no se versiona)
+```
+
+Los dos Dockerfile se construyen con la **raíz del repo** como contexto (el servidor importa `../../shared`
+y vite resuelve `@shared` → `../shared`); `docker compose` ya lo hace así.
+
+Cómo fluye una petición: Cloudflare → `cloudflared` (túnel saliente, no abre puertos) → `http://rona-web:80`
+(nginx) → `/socket.io/` y `/health` van a `rona-server:3001`; lo demás es el cliente estático. Ningún servicio
+publica puertos salvo `rona-web` en `127.0.0.1:8090`, sólo para probar desde el propio host.
+
+**IP real de cada jugador.** Cloudflare la manda en `CF-Connecting-IP`; nginx la copia a `X-Real-IP` y
+**reemplaza** `X-Forwarded-For` con ella (así un cliente no puede colar otra), y el servidor, con
+`TRUST_PROXY=1`, la usa para los topes por IP. Sin `TRUST_PROXY=1` todos los jugadores contarían como la IP del
+contenedor nginx y el tope de 20 conexiones se agotaría con 20 jugadores en total.
+
+### Primera vez en el servidor
+
+1. En Cloudflare Zero Trust → Networks → Tunnels, crea un túnel (tipo *Cloudflared*), copia el token (la cadena
+   tras `--token`) y en *Public Hostname* agrega tu dominio con servicio `HTTP` y URL `rona-web:80`.
+   En la zona, deja activado WebSockets (Network → WebSockets; viene activado por defecto).
+2. En el servidor:
+
+   ```bash
+   git clone -b remake <repo> /home/server1/rona && cd /home/server1/rona
+   cp .env.example .env && nano .env          # pega TUNNEL_TOKEN; TRUST_PROXY=1 se queda
+   docker compose up -d --build
+   docker compose ps                           # los tres en (healthy)
+   curl -s http://127.0.0.1:8090/health        # {"ok":true}
+   ```
+
+Si Docker viene de snap, el proyecto debe vivir dentro de `/home` (snap no ve otras rutas al construir).
+`cloudflared` se queda en `(health: starting)` hasta que el túnel conecta; su healthcheck usa
+`cloudflared tunnel ready` contra las métricas en el puerto 2000 interno.
+
+### Actualizar, logs y pruebas
+
+```bash
+git pull && docker compose up -d --build      # reconstruye y recrea sólo lo que cambió
+docker compose logs -f rona-server rona-web    # nginx registra la IP real del jugador
+docker compose down                            # para todo (no hay datos persistentes: salas y sesiones viven en memoria)
+```
+
+Reiniciar `rona-server` corta las partidas en curso (el estado vive en memoria); los clientes se reconectan
+solos pero vuelven al inicio.
+
+Sin token (en tu PC), levanta sólo el juego y pruébalo contra nginx:
+
+```bash
+SESSIONS_PER_IP_PER_MIN=0 MAX_ROOMS_PER_IP=0 BOT_MIN_MS=50 BOT_MAX_MS=150   docker compose up -d --build rona-server rona-web
+SOAK_URL=http://127.0.0.1:8090 GAMES=3 node e2e/soak.mjs
+node e2e/shot.mjs http://127.0.0.1:8090 e2e/shots/docker.png 1600 900 3000
+docker compose down
+```
+
+(Las variables de la primera línea quitan los topes por IP y aceleran los bots sólo para esa prueba, porque el
+soak abre todas sus sesiones desde la misma IP; en el servidor salen de `.env`.)
 
 ## Pruebas
 
 ```bash
 cd shared      && npm test     # motor: 85 tests (reglas, tratamientos, fuzz de 300 partidas)
-cd virus-back  && npm test     # servidor: 26 tests de integración por Socket.IO (puertos aleatorios), incl. endurecimiento
+cd virus-back  && npm test     # servidor: 28 tests de integración por Socket.IO (puertos aleatorios), incl. endurecimiento
 cd virus-front && npm test && npm run lint && npm run build   # 4 tests del acomodo de la mesa
 ```
 

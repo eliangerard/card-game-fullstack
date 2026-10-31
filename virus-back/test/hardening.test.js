@@ -2,6 +2,7 @@
 // salas por IP, unirse a partidas terminadas, rate limit del chat y anfitrión desconectado.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { io as connect } from 'socket.io-client';
 import { startServer, makeClient, sleep } from './helpers.js';
 
 const profile = (name) => ({ name, avatar: 0, color: '#885ffe' });
@@ -126,6 +127,54 @@ describe('Endurecimiento', () => {
     } finally {
       if (before === undefined) delete process.env.SESSIONS_PER_IP_PER_MIN;
       else process.env.SESSIONS_PER_IP_PER_MIN = before;
+      await srv.close();
+    }
+  });
+
+  test('detrás de un proxy (TRUST_PROXY) los topes cuentan la IP real de X-Forwarded-For', async () => {
+    const srv = await startServer({ trustProxy: true, limits: { maxConnectionsPerIp: 2 } });
+    const sockets = [];
+    // Socket como los que reenvía nginx: X-Forwarded-For lleva lo que mandó el cliente + la IP que vio el proxy
+    const open = (xff) => new Promise((resolve) => {
+      const socket = connect(srv.url, {
+        transports: ['websocket'], forceNew: true, reconnection: false, extraHeaders: { 'x-forwarded-for': xff },
+      });
+      sockets.push(socket);
+      socket.once('connect', () => resolve(true));
+      socket.once('connect_error', () => resolve(false));
+    });
+    try {
+      // Dos jugadores distintos detrás del mismo proxy no comparten cupo
+      assert.equal(await open('203.0.113.1'), true);
+      assert.equal(await open('203.0.113.1'), true);
+      assert.equal(await open('203.0.113.1'), false);
+      assert.equal(await open('203.0.113.2'), true);
+      // Falsear la primera entrada no sirve: cuenta la que anotó el proxy (la última)
+      assert.equal(await open('198.51.100.9, 203.0.113.1'), false);
+      // Sin X-Forwarded-For cuenta la IP del propio proxy
+      assert.equal(await open(''), true);
+    } finally {
+      for (const s of sockets) s.disconnect();
+      await srv.close();
+    }
+  });
+
+  test('sin TRUST_PROXY se ignora X-Forwarded-For', async () => {
+    const srv = await startServer({ limits: { maxConnectionsPerIp: 1 } });
+    const sockets = [];
+    const open = (xff) => new Promise((resolve) => {
+      const socket = connect(srv.url, {
+        transports: ['websocket'], forceNew: true, reconnection: false, extraHeaders: { 'x-forwarded-for': xff },
+      });
+      sockets.push(socket);
+      socket.once('connect', () => resolve(true));
+      socket.once('connect_error', () => resolve(false));
+    });
+    try {
+      assert.equal(await open('203.0.113.1'), true);
+      assert.equal(await open('203.0.113.2'), false);
+    } finally {
+      for (const s of sockets) s.disconnect();
       await srv.close();
     }
   });

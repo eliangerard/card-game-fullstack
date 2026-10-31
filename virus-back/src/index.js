@@ -31,6 +31,16 @@ const SESSION_WINDOW_MS = 60_000;
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const PRUNE_EVERY_MS = 5 * 60 * 1000;
 
+// TRUST_PROXY: cuántos proxies propios hay delante (0/apagado, 1, 2…); `true` cuenta como 1
+function parseTrustProxy(value) {
+  if (value === true) return 1;
+  const n = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// "::ffff:1.2.3.4" (IPv4 dentro de un socket IPv6) cuenta igual que "1.2.3.4"
+const normalizeIp = (ip) => (ip.startsWith('::ffff:') && ip.includes('.') ? ip.slice(7) : ip);
+
 function makeLogger(enabled) {
   const stamp = () => new Date().toISOString().slice(11, 19);
   if (!enabled) return { info() {}, warn() {}, error() {} };
@@ -54,7 +64,7 @@ function makeLogger(enabled) {
  * @param {string}  [opts.clientOrigin]        CORS; por defecto cualquier origen
  * @param {boolean} [opts.log]                 logs en consola
  * @param {object}  [opts.limits]              topes por IP (ver DEFAULT_LIMITS)
- * @param {boolean} [opts.trustProxy]          tomar la IP de X-Forwarded-For (TRUST_PROXY=1; sólo detrás de un proxy propio)
+ * @param {boolean|number} [opts.trustProxy]   proxies propios delante (TRUST_PROXY=1): la IP sale de X-Forwarded-For
  */
 export function createServer(opts = {}) {
   const timing = {
@@ -74,7 +84,7 @@ export function createServer(opts = {}) {
     maxRoomsPerIp: envInt('MAX_ROOMS_PER_IP', DEFAULT_LIMITS.maxRoomsPerIp),
     ...(opts.limits || {}),
   };
-  const trustProxy = opts.trustProxy ?? process.env.TRUST_PROXY === '1';
+  const trustProxy = parseTrustProxy(opts.trustProxy ?? process.env.TRUST_PROXY);
   const log = makeLogger(opts.log ?? process.env.LOG !== '0');
 
   const originSetting = opts.clientOrigin ?? process.env.CLIENT_ORIGIN;
@@ -103,12 +113,16 @@ export function createServer(opts = {}) {
 
   // ---------- topes por IP ----------
 
+  // Detrás de `trustProxy` proxies propios, la IP real es la que anotó el más lejano de ellos en
+  // X-Forwarded-For: la N-ésima desde la derecha. Lo de más a la izquierda lo pudo escribir el
+  // cliente, así que no se usa (antes se tomaba la primera y cualquiera podía falsear su IP).
   const ipOf = (socket) => {
-    if (trustProxy) {
-      const fwd = socket.handshake.headers['x-forwarded-for'];
-      if (typeof fwd === 'string' && fwd.trim()) return fwd.split(',')[0].trim();
-    }
-    return socket.handshake.address || '';
+    const address = normalizeIp(socket.handshake.address || '');
+    if (!trustProxy) return address;
+    const fwd = socket.handshake.headers['x-forwarded-for'];
+    const hops = typeof fwd === 'string' ? fwd.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    if (!hops.length) return address;
+    return normalizeIp(hops[Math.max(0, hops.length - trustProxy)]);
   };
   const connectionsByIp = new Map(); // ip -> sockets abiertos
   const sessionsByIp = new Map(); // ip -> marcas de tiempo de sesiones creadas
