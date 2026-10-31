@@ -3,3 +3,4 @@ node_modules/
 dist/
 *.log
 e2e/shots/
+e2e/video/
