@@ -1,0 +1,10 @@
+{
+  "name": "rona-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "devDependencies": {
+    "playwright": "^1.64.1",
+    "socket.io-client": "^4.8.4"
+  }
+}
