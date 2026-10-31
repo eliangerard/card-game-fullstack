@@ -11,7 +11,8 @@ import { toastError } from './Overlays';
 
 const same = (a, b) => a && b && a.playerId === b.playerId && a.slotId === b.slotId;
 
-// Instrucción que se muestra junto al nombre de la carta seleccionada
+// Instrucción (qué hacer ahora) que se muestra junto al nombre de la carta seleccionada.
+// La descripción del tratamiento (TREATMENT_HELP) va en la revelación y en "Cómo jugar", no aquí.
 const HINTS = {
   organ: 'Haz clic en tu cuerpo (o arrástrala ahí) para ponerte el órgano',
   virus: 'Elige un órgano compatible para pegarle la roña',
@@ -19,8 +20,8 @@ const HINTS = {
   thief: 'Elige el órgano que quieres robar',
   transplant: 'Elige el primer órgano del intercambio',
   transplant2: 'Ahora elige el órgano de otro jugador',
-  contagion: 'Pasa tus virus a los órganos sanos de los demás',
-  glove: 'Todos los demás tiran su mano y pierden un turno',
+  contagion: 'Usa el botón Contagiar o suéltala en la mesa para pasar tus roñas',
+  glove: 'Usa el botón Usar guante o suéltala en la mesa',
   medicalError: 'Elige con quién cambiar tu cuerpo completo',
 };
 

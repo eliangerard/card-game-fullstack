@@ -313,7 +313,7 @@
 }
 
 @keyframes gt-bob {
-  50% { transform: translateY(-3px); }
+  50% { translate: 0 -3px; } /* translate (no transform) para no pisar el centrado del letrero */
 }
 
 /* Destino legal: pulso */
@@ -654,6 +654,49 @@
   font-size: clamp(12px, calc(var(--as) * 0.45), 26px);
 }
 
+/* Nombre con ancho máximo: hasta 2 renglones, sin partir palabras; el tamaño lo pone fitText.js */
+.gt-avatar-name span.gt-name-fit {
+  white-space: normal;
+  overflow-wrap: normal;
+  hyphens: manual;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.08;
+  text-overflow: clip;
+  padding: 1px 4px 3px;
+}
+
+/* Contador de cartas de los asientos compactos (en vez del abanico de reversos) */
+.gt-hand-count {
+  position: absolute;
+  top: calc(var(--pad) * 0.5);
+  right: var(--pad);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.gt-hand-count img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12% / 9.6%;
+  transform: rotate(8deg);
+  filter: brightness(0.7) saturate(0.8);
+  box-shadow: 0 2px 6px rgba(20, 5, 70, 0.45);
+}
+
+.gt-hand-count span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.05em;
+  color: #fff;
+  text-shadow: 1.5px 1.5px 0 var(--strokes), -1.5px 1.5px 0 var(--strokes), 1.5px -1.5px 0 var(--strokes), -1.5px -1.5px 0 var(--strokes);
+}
+
 .gt-badge {
   position: absolute;
   left: 50%;
@@ -688,6 +731,24 @@
 .gt-badge-skip {
   background: #ff4d4d;
   animation: gt-bob 1.4s ease-in-out infinite;
+}
+
+.gt-badge-skip-icon {
+  left: auto;
+  right: -22%;
+  bottom: -22%;
+  transform: none;
+  width: max(14px, calc(var(--as) * 0.6));
+  height: max(14px, calc(var(--as) * 0.6));
+  padding: 2px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.gt-badge-skip-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .gt-badge-bot {
@@ -761,16 +822,27 @@
   transform: translate(-50%, -50%);
   z-index: 26;
   pointer-events: none;
+  /* Ancho fijo para que la píldora pueda bajar a un segundo renglón en vez de cruzar la pantalla */
+  width: min(62vw, 1100px);
+  display: flex;
+  justify-content: center;
+  transition: opacity 0.2s;
+}
+
+/* Mientras se revela el tratamiento de un rival, la píldora se esconde para no quedar debajo */
+.gt-root:has(.fx-reveal) .gt-hint-wrap {
+  opacity: 0;
 }
 
 .gt-hint {
   display: flex;
   align-items: center;
   gap: 0.6em;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: 100%;
   background: rgba(36, 14, 110, 0.9);
   border: 3px solid var(--hc);
-  border-radius: 999px;
+  border-radius: 1.3em;
   padding: 0.35em 0.9em 0.3em;
   font-size: clamp(12px, calc(var(--u) * 22px + 4px), 24px);
   box-shadow: 0 6px 18px rgba(20, 5, 70, 0.35);
@@ -779,12 +851,16 @@
 .gt-hint strong {
   color: var(--hc);
   font-weight: normal;
+  white-space: nowrap;
+  flex: none;
 }
 
 .gt-hint span {
   color: #fff;
   opacity: 0.92;
   font-size: 0.82em;
+  min-width: 0;
+  line-height: 1.15;
 }
 
 .gt-hint em {
@@ -799,6 +875,8 @@
 }
 
 .gt-hint .gt-count {
+  flex: none;
+  white-space: nowrap;
   background: #fff;
   color: var(--strokes);
   padding: 0.05em 0.5em;
@@ -995,6 +1073,7 @@
 }
 
 .gt-chat-empty {
+  font-family: var(--font-body);
   color: #9a8fc0;
   text-align: center;
   margin-top: 20px;
@@ -1015,6 +1094,30 @@
 .gt-msg b {
   font-weight: normal;
   font-size: 13px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* El texto del chat va con la fuente de lectura, como en el chat de la sala */
+.gt-msg span,
+.gt-msg time,
+.gt-msg.is-system,
+.gt-chat-form input {
+  font-family: var(--font-body);
+}
+
+.gt-msg span {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  user-select: text;
+}
+
+.gt-msg time {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9a8fc0;
 }
 
 .gt-msg.is-mine {
@@ -1027,6 +1130,12 @@
   background: transparent;
   color: #8d82b8;
   font-size: 13px;
+  text-align: center;
+}
+
+.gt-msg.is-system span {
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .gt-chat-form {
@@ -1376,16 +1485,28 @@
 }
 
 .gt-end-title {
-  font-size: clamp(34px, 8vh, 80px);
+  /* El tamaño final lo ajusta fitText.js para que el nombre quepa en 2 renglones sin partirse */
+  font-size: clamp(28px, 8vh, 80px);
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: normal;
+  padding: 4px 8px 10px;
   color: var(--accent);
-  line-height: 1;
+  line-height: 1.02;
   text-shadow:
     3px 3px 0 var(--strokes), -3px 3px 0 var(--strokes), 3px -3px 0 var(--strokes), -3px -3px 0 var(--strokes), 0 6px 0 var(--strokes);
   margin-bottom: 10px;
 }
 
 .gt-end.is-lose .gt-end-title {
-  color: #8cff4d;
+  /* Verde oscuro (≈ 4:1 sobre el blanco del modal); la lluvia de roña sigue en verde claro */
+  color: #2f8f12;
+  text-shadow:
+    3px 3px 0 #c6ff8a, -3px 3px 0 #c6ff8a, 3px -3px 0 #c6ff8a, -3px -3px 0 #c6ff8a, 0 6px 0 var(--strokes);
 }
 
 .gt-end-sub {
@@ -1617,6 +1738,90 @@
 .fx-reveal-label span {
   font-size: clamp(12px, 1.8vh, 16px);
   opacity: 0.85;
+}
+
+/* ---------------- Teclado ---------------- */
+
+.gt-root [data-drop]:focus {
+  outline: none;
+}
+
+.gt-root [data-drop]:focus-visible {
+  outline: 4px solid #fff;
+  outline-offset: 4px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9px var(--accent);
+}
+
+.gt-hand-card:focus {
+  outline: none;
+}
+
+/* ---------------- Celular en vertical: aviso para girarlo ---------------- */
+
+.gt-rotate {
+  display: none;
+}
+
+@media (orientation: portrait) and (max-width: 600px), (orientation: portrait) and (pointer: coarse) and (max-width: 1100px) {
+  .gt-rotate {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    padding: 32px;
+    text-align: center;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.14), transparent 60%),
+      var(--background);
+    touch-action: auto;
+  }
+  .gt-rotate strong {
+    font-weight: normal;
+    font-size: 40px;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow:
+      3px 3px 0 var(--strokes), -3px 3px 0 var(--strokes), 3px -3px 0 var(--strokes), -3px -3px 0 var(--strokes), 0 5px 0 var(--strokes);
+  }
+  .gt-rotate span {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 17px;
+    line-height: 1.4;
+    max-width: 300px;
+  }
+  .gt-rotate-phone {
+    width: 74px;
+    height: 124px;
+    border: 7px solid #fff;
+    border-radius: 18px;
+    background: var(--strokes);
+    box-shadow: 0 10px 30px rgba(20, 5, 70, 0.45);
+    position: relative;
+    animation: gt-rotate-phone 2.6s cubic-bezier(.5, 0, .3, 1.4) infinite;
+  }
+  .gt-rotate-phone::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    width: 18px;
+    height: 4px;
+    margin-left: -9px;
+    border-radius: 4px;
+    background: #fff;
+  }
+}
+
+@keyframes gt-rotate-phone {
+  0%, 25% { transform: rotate(0deg); }
+  55%, 85% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
 }
 
 /* ---------------- Celular en horizontal ---------------- */

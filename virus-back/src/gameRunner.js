@@ -5,6 +5,9 @@ import {
   createGame, applyAction, advanceTimeout, removePlayer, getPlayerView, chooseBotAction,
 } from '../../shared/engine/index.js';
 
+// Veces que un mismo jugador puede recibir margen extra por reconectarse en su turno
+const MAX_RECONNECT_GRANTS = 3;
+
 export class GameRunner {
   /**
    * @param {object} o
@@ -31,6 +34,10 @@ export class GameRunner {
     this.botTimer = null;
     this.disposed = false;
     this.finished = false;
+    // Margen por reconexión: uno por turno y un tope por jugador en toda la partida
+    // (si no, reconectar cada pocos segundos congelaba el turno para siempre)
+    this.reconnectGrantTurn = 0;
+    this.reconnectGrants = new Map(); // playerId -> veces que se le dio margen
   }
 
   get winner() { return this.state.winner; }
@@ -72,8 +79,14 @@ export class GameRunner {
     } else {
       // Volvió (p. ej. recargó la página): que tenga un margen razonable para jugar
       const wanted = Math.min(this.timing.turnMs, this.timing.reconnectTurnMs);
-      if (remaining < wanted) this.armTurnTimer(wanted);
-      else return false;
+      const turnNumber = this.state.turnNumber;
+      const used = this.reconnectGrants.get(playerId) || 0;
+      if (remaining >= wanted || this.reconnectGrantTurn === turnNumber || used >= MAX_RECONNECT_GRANTS) {
+        return false;
+      }
+      this.reconnectGrantTurn = turnNumber;
+      this.reconnectGrants.set(playerId, used + 1);
+      this.armTurnTimer(wanted);
     }
     this.emitStates();
     return true;

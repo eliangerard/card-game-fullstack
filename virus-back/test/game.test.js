@@ -138,19 +138,19 @@ describe('Partida', () => {
       await sleep(150);
       assert.equal(a.all('game:events').length, n);
 
-      // Alguien entra a ver el final; no puede pedir revancha
+      // Con la partida terminada no entra nadie nuevo (ni recibe el estado final)
       const v = await srv.client({ profile: profile('Mirón') });
-      const spectatorView = v.waitFor('game:state');
-      await v.ok('room:join', { roomId });
-      const sv = await spectatorView;
-      assert.deepEqual(sv.hand, []);
-      assert.equal(await v.errCode('room:rematch'), 'NOT_HOST');
+      assert.equal(await v.errCode('room:join', { roomId }), 'ROOM_IN_GAME');
 
       const lobby = a.waitFor('room:state', (s) => s?.status === 'lobby');
       await a.ok('room:rematch');
       const st = await lobby;
-      assert.equal(st.players.length, 5);
+      assert.equal(st.players.length, 4);
       assert.equal(st.players.filter((p) => p.isBot).length, 3);
+      // Tras la revancha sí puede entrar, pero no pedir otra
+      await v.ok('room:join', { roomId });
+      assert.equal(v.all('game:state').length, 0);
+      assert.equal(await v.errCode('room:rematch'), 'NOT_HOST');
       assert.equal(await a.errCode('room:rematch'), 'NOT_FINISHED');
       assert.equal(await a.errCode('game:action', { type: 'pass' }), 'NOT_PLAYING');
       // Y se puede volver a empezar

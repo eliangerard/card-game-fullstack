@@ -2,6 +2,7 @@
 //
 //   node e2e/soak.mjs                         levanta su propio servidor (rápido) en un puerto libre
 //   SOAK_URL=http://localhost:3001 node e2e/soak.mjs   contra un servidor ya corriendo
+//     (arráncalo con SESSIONS_PER_IP_PER_MIN=0 MAX_ROOMS_PER_IP=0: todas las sesiones salen de la misma IP)
 //
 // Juega GAMES partidas (20 por defecto) de 2 humanos-script + 1 a 4 bots. Los humanos eligen al azar
 // una jugada legal (con getLegalTargets del motor sobre SU PlayerView) o descartan, y de vez en cuando
@@ -34,7 +35,9 @@ let server = null;
 let URL_BASE = process.env.SOAK_URL;
 if (!URL_BASE) {
   const { createServer } = await import('../virus-back/src/index.js');
-  server = createServer({ log: false, botMinMs: 5, botMaxMs: 20, graceMs: 1500, turnMs: 40000 });
+  server = createServer({ log: false, botMinMs: 5, botMaxMs: 20, graceMs: 1500, turnMs: 40000,
+    // todos los clientes salen de 127.0.0.1: sin topes por IP (0 = sin tope)
+    limits: { maxConnectionsPerIp: 0, sessionsPerIpPerMin: 0, maxRoomsPerIp: 0 } });
   const port = await server.listen(0, '127.0.0.1');
   URL_BASE = `http://127.0.0.1:${port}`;
 }

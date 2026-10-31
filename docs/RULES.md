@@ -25,7 +25,7 @@ Cada carta tiene un `id` único (`c01`…`c68`), que es estable durante la parti
 
 ## Preparación
 
-- De 2 a 6 jugadores. El mazo se baraja, cada jugador recibe 3 cartas y empieza el primer jugador del orden de asientos (el anfitrión).
+- De 2 a 6 jugadores. Al empezar, el servidor baraja el orden de los asientos; luego se baraja el mazo, cada jugador recibe 3 cartas y empieza el primero del orden de asientos ya barajado.
 
 ## Cuerpo y estados de un órgano
 
@@ -47,7 +47,8 @@ En su turno, el jugador hace **exactamente una** de estas dos cosas:
 1. **Jugar** una carta de su mano.
 2. **Descartar** de 1 a 3 cartas de su mano.
 
-Luego roba hasta volver a tener 3 cartas y el turno pasa al siguiente jugador conectado que siga en la partida.
+Luego roba hasta volver a tener 3 cartas y el turno pasa al siguiente jugador que siga en la partida (sólo se salta a los que salieron).
+Un jugador desconectado no se salta: conserva su turno, que se resuelve por timeout de 8 s (descarta 1 carta al azar).
 Si el mazo se acaba, se baraja el descarte y pasa a ser el nuevo mazo. Si aun así no alcanza, roba lo que haya.
 
 ## Compatibilidad de color

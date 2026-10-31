@@ -26,7 +26,7 @@ export class SessionStore {
     this.bySocketId = new Map();
   }
 
-  create(profile) {
+  create(profile, { ip = '' } = {}) {
     const session = {
       token: crypto.randomBytes(24).toString('base64url'),
       playerId: `p_${crypto.randomBytes(6).toString('base64url')}`,
@@ -36,6 +36,10 @@ export class SessionStore {
       roomId: null,
       graceTimer: null,
       lastSeen: Date.now(),
+      ip,
+      // Ventanas de rate limit: viven en la sesión (no en la sala) para que salir y volver no las reinicie
+      chatTimes: [],
+      joinTimes: [],
     };
     this.byToken.set(session.token, session);
     this.byPlayerId.set(session.playerId, session);
@@ -99,6 +103,8 @@ export class SessionStore {
     }
     return n;
   }
+
+  get size() { return this.byToken.size; }
 
   dispose() {
     for (const s of this.byToken.values()) this.cancelGrace(s);

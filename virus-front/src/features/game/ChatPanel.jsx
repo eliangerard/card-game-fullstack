@@ -11,6 +11,14 @@ const ChatIcon = () => (
   </svg>
 );
 
+const timeOf = (ts) => {
+  try {
+    return new Date(ts).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+};
+
 // Chat plegable de la mesa, con burbuja de no leídos
 export const ChatPanel = memo(function ChatPanel({ me, open, onToggle }) {
   const chat = useStore((s) => s.chat);
@@ -91,7 +99,12 @@ export const ChatPanel = memo(function ChatPanel({ me, open, onToggle }) {
               {chat.length === 0 && <p className="gt-chat-empty">Nadie ha dicho nada… todavía.</p>}
               {chat.map((m) => (
                 <div key={m.id} className={`gt-msg ${m.system ? 'is-system' : ''} ${m.from?.id === me ? 'is-mine' : ''}`}>
-                  {!m.system && <b style={{ color: m.from?.color || '#653FD3' }}>{m.from?.name}</b>}
+                  {!m.system && (
+                    <b style={{ color: m.from?.color || '#653FD3' }}>
+                      {m.from?.name}
+                      {m.ts && <time dateTime={new Date(m.ts).toISOString()}>{timeOf(m.ts)}</time>}
+                    </b>
+                  )}
                   <span>{m.text}</span>
                 </div>
               ))}

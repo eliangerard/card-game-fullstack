@@ -1,7 +1,9 @@
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import avatars from '../../lib/avatars';
 import { avatarAnchor } from './fx';
+import { useFitFont } from './fitText';
+import { pressable } from './a11y';
 
 // Anillo de cuenta regresiva del turno: una animación CSS con la duración restante
 const TurnRing = ({ size, timer }) => {
@@ -40,25 +42,24 @@ const TurnRing = ({ size, timer }) => {
   );
 };
 
-// Si el nombre tiene un ancho máximo (para no invadir el asiento vecino) puede ocupar dos renglones,
-// y la letra se achica hasta que quepa la palabra más larga, sin bajar de 12 px; lo que sobre se corta con "…"
+// Nombre del jugador: hasta dos renglones dentro de su ancho máximo (para no invadir el asiento vecino).
+// La letra se achica, medida en el DOM con la fuente real, hasta que quepa la palabra más larga
+// sin partirla; no baja de 11 px. Sólo un nombre de una palabra larguísima se parte como último recurso.
 const ALIGN = { right: 'left', left: 'right', bottom: 'center' };
-const nameStyle = (name, size, nameMax, compact, nameSide) => {
-  if (!nameMax) return undefined;
-  const base = Math.max(13, Math.min(40, size * (compact ? 0.45 : 0.27)));
-  const longest = Math.max(1, ...name.split(/\s+/).map((w) => [...w].length));
-  const fit = (nameMax - 14) / (longest * 0.72);
-  return {
-    maxWidth: nameMax,
-    fontSize: Math.max(12, Math.min(base, fit)),
-    whiteSpace: 'normal',
-    overflowWrap: 'anywhere',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    lineHeight: 1.08,
-    textAlign: ALIGN[nameSide] || 'center',
-  };
+const NAME_MIN_FONT = 11;
+const PlayerName = ({ name, size, nameMax, compact, nameSide }) => {
+  const ref = useRef(null);
+  const max = Math.round(Math.max(NAME_MIN_FONT, Math.min(40, size * (compact ? 0.45 : 0.27))) * 2) / 2;
+  useFitFont(ref, max, Math.min(max, NAME_MIN_FONT), [name, nameMax, nameSide]);
+  return (
+    <span
+      ref={ref}
+      className="gt-name-fit"
+      style={{ maxWidth: nameMax, textAlign: ALIGN[nameSide] || 'center' }}
+    >
+      {name}
+    </span>
+  );
 };
 
 // Avatar de un jugador con su color, nombre, anillo de turno y estado
@@ -80,13 +81,15 @@ export const Avatar = memo(function Avatar({
     hovered && 'is-hover',
     compact && 'is-compact',
   ].filter(Boolean).join(' ');
+  // El panel del asiento ya es el destino enfocable con Tab; el avatar responde al clic y al arrastre
+  const a11y = pressable(targetable ? onClick : null, `Cambiar tu cuerpo con el de ${gp?.name || info?.name || 'este jugador'}`, { focusable: false });
 
   return (
     <div
       className={classes}
       style={{ '--pc': color, '--as': `${size}px` }}
-      onClick={onClick}
       data-drop={targetable ? 'player' : undefined}
+      {...a11y}
       data-pid={gp?.id}
     >
       <motion.div
@@ -106,13 +109,22 @@ export const Avatar = memo(function Avatar({
             </svg>
           </span>
         )}
-        {gp?.skipNext && !out && <span className="gt-badge gt-badge-skip">pierde turno</span>}
+        {gp?.skipNext && !out && (compact
+          // En el avatar compacto el letrero no cabe sin tapar el nombre: va un ícono de pausa
+          ? (
+            <span className="gt-badge gt-badge-skip gt-badge-skip-icon" title="Pierde su siguiente turno" aria-label="Pierde su siguiente turno">
+              <svg viewBox="0 0 24 24" aria-hidden><path d="M8 6v12M16 6v12" stroke="currentColor" strokeWidth="4" strokeLinecap="round" /></svg>
+            </span>
+          )
+          : <span className="gt-badge gt-badge-skip">pierde turno</span>)}
         {info?.isBot && <span className="gt-badge gt-badge-bot">bot</span>}
         {out && <span className="gt-badge gt-badge-out">fuera</span>}
       </motion.div>
       {nameSide !== 'none' && (
         <div className="gt-avatar-name">
-          <span style={nameStyle(gp?.name || info?.name || '…', size, nameMax, compact, nameSide)}>{gp?.name || info?.name || '…'}</span>
+          {nameMax
+            ? <PlayerName name={gp?.name || info?.name || '…'} size={size} nameMax={nameMax} compact={compact} nameSide={nameSide} />
+            : <span>{gp?.name || info?.name || '…'}</span>}
           {isMe && <small>tú</small>}
         </div>
       )}

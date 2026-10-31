@@ -1,9 +1,10 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import avatars from '../../lib/avatars';
 import { sfx } from '../../lib/sfx';
 import { reducedMotion } from './fx';
+import { useFitFont } from './fitText';
 
 // Diálogo de confirmación propio (sin window.confirm)
 export const ConfirmDialog = memo(function ConfirmDialog({ open, title, text, confirmLabel = 'Sí', cancelLabel = 'Cancelar', danger, onConfirm, onCancel }) {
@@ -68,6 +69,17 @@ export const EndModal = memo(function EndModal({ winner, winnerInfo, isMe, isHos
 
   const name = winnerInfo?.name || 'Alguien';
   const forfeit = winner?.reason === 'forfeit';
+  const title = isMe ? '¡Ganaste!' : `Ganó ${name}`;
+
+  // El título se achica hasta caber en 2 renglones sin partir el nombre (medido con la fuente real)
+  const titleRef = useRef(null);
+  const [vh, setVh] = useState(() => (typeof window === 'undefined' ? 800 : window.innerHeight));
+  useEffect(() => {
+    const onResize = () => setVh(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useFitFont(titleRef, Math.round(Math.max(28, Math.min(80, vh * 0.08))), 18, [title, !!winner]);
 
   return (
     <AnimatePresence>
@@ -96,7 +108,7 @@ export const EndModal = memo(function EndModal({ winner, winnerInfo, isMe, isHos
               </svg>
               <img src={avatars[winnerInfo?.avatar ?? 0] || avatars[0]} alt="" />
             </div>
-            <div className="gt-end-title">{isMe ? '¡Ganaste!' : `Ganó ${name}`}</div>
+            <div className="gt-end-title" ref={titleRef}>{title}</div>
             <p className="gt-end-sub">
               {forfeit
                 ? (isMe ? 'Los demás abandonaron la partida.' : `${name} se quedó solo en la mesa.`)

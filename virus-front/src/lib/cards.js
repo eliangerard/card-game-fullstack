@@ -26,7 +26,9 @@ export const cardImage = (card, size = 'big') => {
   return set[`../assets/Cards/${artName(card)}_${size}.png`];
 };
 
-export const BACK_IMAGE = cardImage(null);
+// Los reversos de la mesa se pintan a ≤ 260 px: basta la versión _sm (641×801). La _big sólo se usa
+// en la revelación de un tratamiento (FxLayer), que pide cardImage(card, 'big') aparte.
+export const BACK_IMAGE = cardImage(null, 'sm');
 
 export const COLOR_NAMES = { red: 'corazón', green: 'estómago', blue: 'cerebro', yellow: 'hueso', multi: 'comodín' };
 export const COLOR_HEX = { red: '#ff4d4d', green: '#20c040', blue: '#1e90ff', yellow: '#ffcc00', multi: '#c070ff' };

@@ -3,6 +3,8 @@ import { slotStatus } from '@shared/engine/index.js';
 import { GameCard } from './GameCard';
 import { STACK_EXTRA, STACK_STEP } from './layout';
 import { slotAnchor } from './fx';
+import { pressable } from './a11y';
+import { COLOR_NAMES } from '../../lib/cards';
 
 export const slotKey = (playerId, slotId) => `${playerId}:${slotId}`;
 
@@ -38,8 +40,14 @@ const DropIcon = () => (
 
 const STATUS_LABEL = { healthy: 'sano', infected: 'infectado', vaccinated: 'vacunado', immunized: 'inmunizado' };
 
+// "tu corazón, infectado" / "cerebro de Beto, vacunado"
+const slotLabel = (slot, status, ownerName, mine) => {
+  const organ = COLOR_NAMES[slot.organ?.color] || 'órgano';
+  return `${mine ? `tu ${organ}` : `${organ} de ${ownerName || 'otro jugador'}`}, ${STATUS_LABEL[status]}`;
+};
+
 // Una ranura: el órgano con sus virus y medicinas apilados encima, desplazados hacia abajo
-export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetable, picked, hovered, dimmed, onSlot }) {
+export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetable, picked, hovered, dimmed, onSlot, ownerName, mine }) {
   const status = safeStatus(slot);
   const mods = [...(slot.viruses || []), ...(slot.medicines || [])];
   const stackH = h * (1 + STACK_STEP * mods.length);
@@ -51,6 +59,11 @@ export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetabl
     hovered && 'is-hover',
     dimmed && 'is-dim',
   ].filter(Boolean).join(' ');
+  const label = slotLabel(slot, status, ownerName, mine);
+  // Si es destino, es un botón (clic, Enter o Espacio); si no, una imagen con su estado para el lector de pantalla
+  const a11y = targetable
+    ? pressable(() => onSlot?.(playerId, slot.id), label)
+    : { role: 'img', 'aria-label': `${label}${picked ? ', elegido' : ''}` };
 
   return (
     <div
@@ -60,8 +73,8 @@ export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetabl
       data-drop={targetable ? 'slot' : undefined}
       data-pid={playerId}
       data-slot={slot.id}
-      title={STATUS_LABEL[status]}
-      onClick={targetable ? () => onSlot?.(playerId, slot.id) : undefined}
+      title={label}
+      {...a11y}
     >
       <div className="gt-slot-aura" style={{ height: stackH }} />
       {/* Como en el mockup: el órgano al frente y lo que tiene encima asomando por debajo */}
@@ -90,7 +103,7 @@ export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetabl
 
 // El cuerpo de un jugador: ranuras + huecos vacíos hasta completar 4
 export const Body = memo(function Body({
-  playerId, body, card4, card5, cols, gap, hl, picked, hover, onSlot, organTarget, onBody, className = '',
+  playerId, body, card4, card5, cols, gap, hl, picked, hover, onSlot, organTarget, onBody, className = '', ownerName, mine = false,
 }) {
   const n = body.length;
   const size = n >= 5 || (organTarget && n >= 4) ? card5 : card4;
@@ -112,6 +125,8 @@ export const Body = memo(function Body({
           hovered={hover === k}
           dimmed={hl?.active && !targetable && picked !== k}
           onSlot={onSlot}
+          ownerName={ownerName}
+          mine={mine}
         />
       );
     }),
@@ -133,7 +148,7 @@ export const Body = memo(function Body({
       data-anchor={`body:${playerId}`}
       data-drop={organTarget ? 'body' : undefined}
       data-pid={playerId}
-      onClick={organTarget ? () => onBody?.(playerId) : undefined}
+      {...pressable(organTarget ? () => onBody?.(playerId) : null, mine ? 'Ponerte el órgano en tu cuerpo' : `Poner el órgano en el cuerpo de ${ownerName}`)}
     >
       {items}
     </div>

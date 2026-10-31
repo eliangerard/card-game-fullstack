@@ -329,6 +329,11 @@ export const startDemo = (param) => {
   demoPlayers = param === 'game6' ? 6 : param === 'game2' ? 2 : param === 'game3' ? 3 : param === 'game5' ? 5 : 4;
   const params = new URLSearchParams(window.location.search);
   const paused = params.has('pause');
+  // ?longnames: nombres largos para revisar que no se corten ni se partan a media palabra
+  if (params.has('longnames')) {
+    const long = ['Maximiliana Ruiz', 'Maximiliano Roña', 'Tío Comezón', 'Beto', 'Comandante Tos', 'Doctor Mocos'];
+    PEOPLE.forEach((p, i) => { p.name = long[i]; });
+  }
 
   useStore.setState({
     // Las acciones del store se reemplazan por la simulación local

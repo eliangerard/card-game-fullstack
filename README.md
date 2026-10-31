@@ -52,15 +52,23 @@ de la red local basta con abrir `http://<ip-de-tu-pc>:5173`.
 | `CLIENT_ORIGIN` | cualquiera | orígenes permitidos por CORS, separados por comas |
 | `TURN_MS` | `40000` | duración de un turno |
 | `DISCONNECTED_TURN_MS` | `8000` | turno de un jugador desconectado |
-| `RECONNECT_TURN_MS` | `15000` | margen mínimo al volver en tu propio turno |
+| `RECONNECT_TURN_MS` | `15000` | margen mínimo al volver en tu propio turno (una vez por turno, máx. 3 por partida) |
 | `GRACE_MS` | `60000` | cuánto se guarda el asiento de un desconectado |
 | `BOT_MIN_MS` / `BOT_MAX_MS` | `900` / `1600` | lo que "piensa" un bot |
 | `LOG` | `1` | `LOG=0` apaga los logs |
+| `MAX_CONNECTIONS_PER_IP` | `20` | sockets abiertos a la vez por IP (`0` = sin tope) |
+| `SESSIONS_PER_IP_PER_MIN` | `20` | sesiones nuevas por minuto por IP (`0` = sin tope) |
+| `MAX_ROOMS_PER_IP` | `8` | salas abiertas creadas desde una IP (`0` = sin tope) |
+| `TRUST_PROXY` | apagado | `TRUST_PROXY=1` toma la IP de `X-Forwarded-For` (sólo detrás de un proxy propio; si no, todos cuentan como la IP del proxy) |
+
+Los topes por IP suponen que no hay muchos jugadores detrás de la misma IP (una escuela, una red con NAT);
+en ese caso súbelos. Ver `docs/PROTOCOL.md` ("Límites contra abusos").
 
 ### Modos de demostración del cliente (sólo en desarrollo, sin servidor)
 
 - Lobby: `?demo=lobby`, `?demo=room`, `?demo=room-guest`, `?demo=offline`
-- Mesa: `?demo=game` (4 jugadores), `?demo=game2` … `?demo=game6`; añade `&pause` para congelar a los bots.
+- Mesa: `?demo=game` (4 jugadores), `?demo=game2` … `?demo=game6`; añade `&pause` para congelar a los bots y
+  `&longnames` para probar nombres largos.
   En la consola, `window.__ronaDemo.run('destroy' | 'contagion' | 'glove' | 'win' | …)` dispara cada animación.
 
 ## Producción
@@ -78,8 +86,8 @@ define `CLIENT_ORIGIN` con el dominio del cliente.
 
 ```bash
 cd shared      && npm test     # motor: 85 tests (reglas, tratamientos, fuzz de 300 partidas)
-cd virus-back  && npm test     # servidor: 17 tests de integración por Socket.IO (puertos aleatorios)
-cd virus-front && npm run lint && npm run build
+cd virus-back  && npm test     # servidor: 26 tests de integración por Socket.IO (puertos aleatorios), incl. endurecimiento
+cd virus-front && npm test && npm run lint && npm run build   # 4 tests del acomodo de la mesa
 ```
 
 ### Resistencia por socket (sin navegador)
@@ -87,13 +95,16 @@ cd virus-front && npm run lint && npm run build
 ```bash
 cd e2e
 npm run soak                                        # levanta su propio servidor rápido en un puerto libre
-SOAK_URL=http://localhost:3001 GAMES=3 npm run soak # o contra un servidor ya corriendo
+SOAK_URL=http://localhost:3001 GAMES=3 npm run soak # o contra un servidor ya corriendo (ver abajo)
 ```
 
 Juega 20 partidas (`GAMES`) de 2 humanos-script + 1 a 4 bots, con reconexiones y abandonos a media
 partida y acciones ilegales a propósito. En cada `game:state` comprueba que haya 68 cartas en total
 (visibles + ocultas), que `handCount` coincida con la mano, que el turno avance y nunca sea de alguien
 que salió, y que el `seq` de los lotes sea consecutivo. Falla si una partida se atora o no termina.
+
+Todas las sesiones del soak salen de la misma IP: su servidor propio arranca sin topes por IP, y si lo
+corres contra uno ya levantado, arráncalo con `SESSIONS_PER_IP_PER_MIN=0 MAX_ROOMS_PER_IP=0`.
 
 ### Punta a punta con Playwright
 
@@ -113,4 +124,14 @@ volver a su asiento; al final se pide la revancha y se abre la misma sesión en 
 Falla si aparece cualquier error en la consola o una excepción en la página.
 Las capturas quedan en `e2e/shots/e2e-*.png` (la carpeta no se sube al repo).
 
-`node e2e/shot.mjs <url> <png> [ancho] [alto] [esperaMs]` saca una captura suelta.
+### Otras pruebas y capturas
+
+- `node e2e/front-check.mjs` (con vite corriendo; `E2E_URL`, por defecto `http://localhost:5174`): 45
+  comprobaciones visuales y de accesibilidad de la mesa (nombres que caben, celular en horizontal, aviso de
+  girar el teléfono, contraste, teclado, silencio compartido lobby/mesa…). Casi todo usa el modo demo; la prueba
+  del silencio necesita el servidor. Capturas en `e2e/shots/fix-*.png`.
+- `node e2e/final-shots.mjs` (servidor recién arrancado con `BOT_MIN_MS=350 BOT_MAX_MS=650` y vite en el 5173):
+  el set de capturas `e2e/shots/final-*.png` (home, lobby, sala con chat, mesa al inicio y a media partida, carta
+  seleccionada con sus destinos, victoria). Dos humanos con una heurística sencilla contra 2 bots fáciles; repite
+  con revancha hasta tener todas.
+- `node e2e/shot.mjs <url> <png> [ancho] [alto] [esperaMs]` saca una captura suelta.

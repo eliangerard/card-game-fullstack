@@ -18,6 +18,13 @@ const SEAT_POSITIONS = {
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+// Ancho mínimo cómodo para tocar una ranura con el dedo
+export const MIN_TOUCH = 44;
+// Ancho que necesita un nombre para que su palabra más larga (hasta ~11 letras) quepa a 11 px
+export const NAME_MIN_W = 100;
+// Ancho del contador de cartas de los asientos compactos, en fracción del avatar
+export const COUNT_W = 0.8;
+
 // Tamaño de carta que cabe en una caja con n ranuras (en fila o en rejilla de `cols` columnas)
 export const fitCards = (boxW, boxH, n, cols = n, gap = 8) => {
   const c = Math.max(1, Math.min(cols, n));
@@ -61,6 +68,8 @@ export const computeLayout = (W, H, nOpp) => {
       size: meAvatar,
       right: W - (W / 2 - handWidth / 2 - gap * 2), // se ancla por la derecha (el nombre va a la izquierda)
       y: H - meAvatar - pad,
+      // Mi nombre ocupa lo que queda a la izquierda del avatar (con un tope para que no se vea perdido)
+      nameMax: Math.max(60, Math.min(meAvatar * 3, W / 2 - handWidth / 2 - gap * 2 - meAvatar * 1.14 - pad * 2)),
     },
   };
 
@@ -71,45 +80,70 @@ export const computeLayout = (W, H, nOpp) => {
   center.card = { w: Math.round(pileH * CARD_RATIO), h: Math.round(pileH) };
 
   // ---------- Rivales ----------
-  const seats = [];
-  const topX0 = hasSides ? sideW + gap * 1.5 : W * 0.035;
-  const topRegionW = W - topX0 * 2;
-  // Con 1 o 2 rivales arriba no hace falta un panel de lado a lado
-  const maxTopW = nTop === 1 ? W * 0.6 : nTop === 2 ? W * 0.42 : Infinity;
-  const topSeatW = nTop ? Math.min(maxTopW, (topRegionW - (nTop - 1) * gap * 2) / nTop) : 0;
-  const topStart = (W - (nTop * topSeatW + (nTop - 1) * gap * 2)) / 2;
-  let topIndex = 0;
-
-  for (const pos of positions) {
-    if (pos === 'top') {
-      const x = topStart + topIndex * (topSeatW + gap * 2);
-      topIndex += 1;
+  // Asientos de arriba repartidos entre x0 y W - x0
+  const topSeats = (x0) => {
+    const regionW = W - x0 * 2;
+    // Con 1 o 2 rivales arriba no hace falta un panel de lado a lado
+    const maxTopW = nTop === 1 ? W * 0.6 : nTop === 2 ? W * 0.42 : Infinity;
+    const seatW = nTop ? Math.min(maxTopW, (regionW - (nTop - 1) * gap * 2) / nTop) : 0;
+    const start = (W - (nTop * seatW + (nTop - 1) * gap * 2)) / 2;
+    return Array.from({ length: nTop }, (_, i) => {
+      const x = start + i * (seatW + gap * 2);
       const peek = topH * 0.17; // franja de la mano boca abajo que asoma desde el borde de arriba
       // Opción A: avatar a la derecha del panel (como el mockup)
-      const avA = clamp(Math.min(topH * 0.46, topSeatW * 0.24), 34, 150);
-      const boxA = { w: topSeatW - avA - gap * 2 - pad * 2, h: topH - peek - pad * 2 };
-      // Opción B: avatar pequeño en la franja de la mano, a la izquierda (asientos angostos)
+      const avA = clamp(Math.min(topH * 0.46, seatW * 0.24), 34, 150);
+      const boxA = { w: seatW - avA - gap * 2 - pad * 2, h: topH - peek - pad * 2 };
+      // Opción B (compacta): avatar pequeño en una franja arriba, sin abanico de reversos
+      // (sólo un contador de cartas), para no encimar el nombre con la mano
       const avB = clamp(topH * 0.22, 24, 64);
-      const headB = Math.max(peek, avB + pad * 0.5);
-      const boxB = { w: topSeatW - pad * 2, h: topH - headB - pad * 2 };
+      const headB = avB + pad * 0.5;
+      const boxB = { w: seatW - pad * 2, h: topH - headB - pad * 2 };
       const cardA = fitCards(boxA.w, boxA.h, 4, 4, gap);
       const cardB = fitCards(boxB.w, boxB.h, 4, 4, gap);
-      const compact = cardB.w > cardA.w * 1.12;
+      // Compacto si así caben cartas más grandes, o si la columna del avatar no da para un nombre legible
+      const compact = cardB.w > cardA.w * 1.12 || avA + gap * 2 < NAME_MIN_W;
       const avatar = compact ? avB : avA;
       const box = compact ? boxB : boxA;
-      seats.push({
-        pos, compact, x, y: 0, w: topSeatW, h: topH, peek, avatar, box, head: compact ? headB : peek,
+      const panelW = compact ? seatW : seatW - avA - gap * 2;
+      // El nombre: en el compacto, a la derecha del avatar hasta el contador de cartas; si no, bajo el avatar
+      const nameMax = compact ? seatW - pad * 2 - avB * (1.14 + COUNT_W) - pad : seatW - panelW;
+      return {
+        pos: 'top', compact, x, y: 0, w: seatW, h: topH, peek, avatar, box, head: compact ? headB : peek,
         cols: 5, card4: fitCards(box.w, box.h, 4, 4, gap), card5: fitCards(box.w, box.h, 5, 5, gap * 0.8),
-        panelW: compact ? topSeatW : topSeatW - avA - gap * 2,
-      });
+        panelW, nameMax,
+      };
+    });
+  };
+  let tops = topSeats(hasSides ? sideW + gap * 1.5 : W * 0.035);
+  // Celular en horizontal con 2 o 3 rivales arriba y 2 a los lados: si las ranuras de arriba no llegan
+  // a un tamaño táctil (44 px), la fila de arriba usa todo el ancho y los laterales empiezan debajo
+  let sideTop = 0;
+  if (hasSides && nTop >= 2 && tops[0].card4.w < MIN_TOUCH) {
+    const wide = topSeats(pad);
+    if (wide[0].card4.w > tops[0].card4.w) {
+      tops = wide;
+      sideTop = topH + gap;
+    }
+  }
+
+  const seats = [];
+  let topIndex = 0;
+  for (const pos of positions) {
+    if (pos === 'top') {
+      seats.push(tops[topIndex]);
+      topIndex += 1;
     } else {
-      const avatar = clamp(Math.min(sideW * 0.4, H * 0.15), 34, 160);
-      const y = avatar * 0.85 + pad * 2;
+      // El nombre va a la derecha (o izquierda) del avatar: si la columna es angosta, el avatar se achica
+      const nameNeed = Math.max(NAME_MIN_W, sideW * 0.5);
+      const avatar = clamp(Math.min(sideW * 0.4, H * 0.15, (sideW - pad * 3 - nameNeed) / 1.14), 30, 160);
+      const headY = sideTop + pad; // dónde va el avatar
+      const nameMax = sideW - pad * 3 - avatar * 1.14;
+      const y = headY + avatar * 0.85 + pad;
       const h = H * 0.895 - y;
       const gutter = sideW * 0.16; // la mano boca abajo asoma desde el borde de la pantalla
       const box = { w: sideW - gutter - pad * 2, h: h - pad * 2 };
       seats.push({
-        pos, x: pos === 'left' ? 0 : W - sideW, y, w: sideW, h, avatar, gutter, box,
+        pos, x: pos === 'left' ? 0 : W - sideW, y, headY, w: sideW, h, avatar, gutter, box, nameMax,
         cols: 2, card4: fitCards(box.w, box.h, 4, 2, gap), card5: fitCards(box.w, box.h, 5, 2, gap),
       });
     }

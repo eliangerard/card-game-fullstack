@@ -3,24 +3,20 @@ import { create } from 'zustand';
 import { motion } from 'framer-motion';
 import soundtrack from '../../assets/roña soundtrack.mp3';
 import { IconVolume, IconVolumeOff } from './icons';
+import { isMuted, onMuteChange, toggleMute } from '../../lib/sfx';
 
 // Música del lobby: un único <audio> compartido entre pantallas,
-// con silencio persistido y tolerante al bloqueo de autoplay.
-const MUTE_KEY = 'rona.muted';
+// tolerante al bloqueo de autoplay. El silencio es UNO solo para la música y los efectos:
+// la fuente de verdad es lib/sfx.js (que lo guarda en localStorage['rona.muted']) y este store
+// sólo lo refleja, así el botón del lobby y el de la mesa nunca se contradicen.
 const VOLUME = 0.35;
 
-const readMuted = () => {
-  try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; }
-};
-
-export const useMusicStore = create((set) => ({
-  muted: readMuted(),
-  toggle: () => set((s) => {
-    const muted = !s.muted;
-    try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* sin almacenamiento */ }
-    return { muted };
-  }),
+export const useMusicStore = create(() => ({
+  muted: isMuted(),
+  toggle: () => toggleMute(),
 }));
+
+onMuteChange((muted) => useMusicStore.setState({ muted }));
 
 let audio = null;
 let users = 0;
@@ -110,8 +106,8 @@ export const MusicToggle = () => {
       className="ui-icon-btn"
       onClick={toggle}
       whileHover={{ rotate: [0, -10, 10, 0] }}
-      title={muted ? 'Activar música' : 'Silenciar música'}
-      aria-label={muted ? 'Activar música' : 'Silenciar música'}
+      title={muted ? 'Activar sonido' : 'Silenciar sonido'}
+      aria-label={muted ? 'Activar sonido' : 'Silenciar sonido'}
       aria-pressed={muted}
     >
       <motion.span key={muted ? 'off' : 'on'} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ display: 'grid' }}>

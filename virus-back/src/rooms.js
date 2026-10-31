@@ -14,6 +14,9 @@ const MAX_ROOMS = 200;
 const CHAT_HISTORY = 50;
 const CHAT_BURST = 5;
 const CHAT_WINDOW_MS = 5000;
+// Entrar a salas (unirse o crear) por sesión: frena el bucle salir/entrar que inunda el chat de avisos
+const JOIN_BURST = 6;
+const JOIN_WINDOW_MS = 30_000;
 const ROOM_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const BOT_NAMES = [
@@ -28,7 +31,8 @@ const LEAVE_VERBS = { leave: 'salió', kick: 'fue expulsado', timeout: 'se desco
 const channel = (roomId) => `room:${roomId}`;
 
 export class RoomManager {
-  constructor({ io, sessions, timing, log }) {
+  constructor({ io, sessions, timing, log, limits = {} }) {
+    this.limits = limits;
     this.io = io;
     this.sessions = sessions;
     this.timing = timing;
@@ -124,8 +128,9 @@ export class RoomManager {
     this.pushChat(room, { id: crypto.randomUUID(), from: null, text, ts: Date.now(), system: true });
   }
 
+  // Sólo a quien juega esa partida (no a alguien que entró después)
   sendGameState(room, playerId) {
-    if (room.runner) this.emitTo(playerId, 'game:state', room.runner.viewFor(playerId));
+    if (room.runner && room.runner.state.players.some((p) => p.id === playerId)) this.emitTo(playerId, 'game:state', room.runner.viewFor(playerId));
   }
 
   // Mete el socket del jugador en el canal de la sala y le manda lo que necesita
@@ -143,6 +148,12 @@ export class RoomManager {
     const p = asObject(payload);
     if (session.roomId && this.rooms.has(session.roomId)) fail('ALREADY_IN_ROOM', 'Ya estás en una sala');
     if (this.rooms.size >= MAX_ROOMS) fail('SERVER_FULL', 'Hay demasiadas salas abiertas, intenta más tarde');
+    const maxPerIp = this.limits.maxRoomsPerIp;
+    if (maxPerIp && session.ip) {
+      let mine = 0;
+      for (const r of this.rooms.values()) if (r.creatorIp === session.ip) mine++;
+      if (mine >= maxPerIp) fail('RATE_LIMITED', 'Ya hay demasiadas salas abiertas desde tu red');
+    }
     const emptyName = p.name === undefined || p.name === null || (typeof p.name === 'string' && p.name.trim() === '');
     const name = emptyName
       ? [...`Sala de ${session.profile.name}`].slice(0, ROOM_NAME_MAX).join('')
@@ -162,10 +173,11 @@ export class RoomManager {
       status: 'lobby',
       players: [],
       chat: [],
-      chatRate: new Map(),
       runner: null,
       createdAt: Date.now(),
+      creatorIp: session.ip || '',
     };
+    this.takeJoinSlot(session);
     this.rooms.set(room.id, room);
     this.addHuman(room, session);
     this.log.info(`Sala ${room.id} "${room.name}" creada por ${session.profile.name}`);
@@ -185,7 +197,9 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) fail('ROOM_NOT_FOUND', 'Esa sala no existe');
     if (room.status === 'playing') fail('ROOM_IN_GAME', 'La partida ya empezó');
+    if (room.status !== 'lobby') fail('ROOM_IN_GAME', 'Esa partida acaba de terminar; espera a la revancha');
     if (room.players.length >= room.maxPlayers) fail('ROOM_FULL', 'La sala está llena');
+    this.takeJoinSlot(session);
     this.addHuman(room, session);
     this.log.info(`${session.profile.name} entró a la sala ${room.id}`);
     this.broadcastRoom(room); // a los que ya estaban
@@ -193,6 +207,18 @@ export class RoomManager {
     this.system(room, `${session.profile.name} se unió`);
     this.markListDirty();
     return {};
+  }
+
+  // Cuenta una entrada a sala; lanza RATE_LIMITED si fueron demasiadas en la ventana
+  takeJoinSlot(session) {
+    const now = Date.now();
+    const times = (session.joinTimes || []).filter((t) => now - t < JOIN_WINDOW_MS);
+    if (times.length >= JOIN_BURST) {
+      session.joinTimes = times;
+      fail('RATE_LIMITED', 'Entras y sales muy rápido, espera unos segundos');
+    }
+    times.push(now);
+    session.joinTimes = times;
   }
 
   addHuman(room, session) {
@@ -218,7 +244,6 @@ export class RoomManager {
     const idx = room.players.findIndex((p) => p.id === playerId);
     if (idx === -1) return;
     const [player] = room.players.splice(idx, 1);
-    room.chatRate.delete(playerId);
     const verb = LEAVE_VERBS[reason] || 'salió';
     this.log.info(`${player.name} ${verb} de la sala ${room.id}`);
 
@@ -302,10 +327,14 @@ export class RoomManager {
     const text = parseText(p.text, { field: 'text', max: CHAT_MAX });
     const room = this.roomOf(session);
     const now = Date.now();
-    const times = (room.chatRate.get(session.playerId) || []).filter((t) => now - t < CHAT_WINDOW_MS);
-    if (times.length >= CHAT_BURST) fail('RATE_LIMITED', 'Vas muy rápido, espera unos segundos');
+    // La ventana vive en la sesión: salir y volver a entrar no la reinicia
+    const times = (session.chatTimes || []).filter((t) => now - t < CHAT_WINDOW_MS);
+    if (times.length >= CHAT_BURST) {
+      session.chatTimes = times;
+      fail('RATE_LIMITED', 'Vas muy rápido, espera unos segundos');
+    }
     times.push(now);
-    room.chatRate.set(session.playerId, times);
+    session.chatTimes = times;
     const me = room.players.find((x) => x.id === session.playerId);
     this.pushChat(room, {
       id: crypto.randomUUID(),
@@ -387,6 +416,7 @@ export class RoomManager {
   onGameFinished(room, winner) {
     if (this.rooms.get(room.id) !== room) return;
     room.status = 'finished';
+    this.handOffHostIfAway(room, { announce: false });
     const name = room.runner?.state.players.find((p) => p.id === winner.playerId)?.name || 'Alguien';
     this.log.info(`Sala ${room.id}: ganó ${name} (${winner.reason})`);
     this.broadcastRoom(room);
@@ -429,9 +459,25 @@ export class RoomManager {
     if (!resent) this.sendGameState(room, session.playerId);
   }
 
+  // Si el anfitrión está desconectado y no hay partida en curso, el rol pasa al primer humano
+  // conectado (si no, la sala quedaba bloqueada toda la gracia: nadie podía iniciar ni agregar bots)
+  handOffHostIfAway(room, { announce = true } = {}) {
+    if (room.status === 'playing') return false;
+    const host = room.players.find((p) => p.id === room.hostId);
+    if (host && this.isConnected(host)) return false;
+    const next = room.players.find((p) => !p.isBot && p.id !== room.hostId && this.isConnected(p));
+    if (!next) return false;
+    room.hostId = next.id;
+    this.log.info(`Sala ${room.id}: el anfitrión se desconectó, ahora lo es ${next.name}`);
+    if (announce) this.system(room, `${next.name} ahora es el anfitrión`);
+    this.markListDirty();
+    return true;
+  }
+
   onDisconnected(session) {
     const room = session.roomId ? this.rooms.get(session.roomId) : null;
     if (!room) return;
+    this.handOffHostIfAway(room);
     this.broadcastRoom(room);
     if (room.status === 'playing' && room.runner) room.runner.onConnectionChange(session.playerId);
   }

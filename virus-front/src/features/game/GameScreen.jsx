@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
-import { cardLabel, TREATMENT_HELP } from '../../lib/cards';
+import { cardLabel } from '../../lib/cards';
 import { sfx, isMuted, toggleMute, onMuteChange } from '../../lib/sfx';
 import { computeLayout, opponentsOf } from './layout';
 import { useEventPlayer, registerDeal } from './events';
@@ -140,6 +140,36 @@ export const GameScreen = () => {
     return () => ids.forEach(clearTimeout);
   }, [ix.myTurn, timer]);
 
+  // Teclado: al elegir una carta (o el primer órgano del trasplante) el foco salta al primer destino;
+  // al soltarla o jugarla, regresa a la mano. Sólo si se está usando el teclado, para no robar el foco al ratón.
+  const usingKeyboard = useRef(false);
+  useEffect(() => {
+    const kb = (e) => { if (['Tab', 'Enter', ' ', 'Escape'].includes(e.key)) usingKeyboard.current = true; };
+    const ptr = () => { usingKeyboard.current = false; };
+    window.addEventListener('keydown', kb, true);
+    window.addEventListener('pointerdown', ptr, true);
+    return () => {
+      window.removeEventListener('keydown', kb, true);
+      window.removeEventListener('pointerdown', ptr, true);
+    };
+  }, []);
+  const hadCard = useRef(false);
+  useEffect(() => {
+    const had = hadCard.current;
+    hadCard.current = !!ix.card;
+    if (!usingKeyboard.current) return undefined;
+    const t = setTimeout(() => {
+      const active = document.activeElement;
+      if (ix.card) {
+        if (active?.matches?.('.gt-root [data-drop][tabindex="0"]')) return;
+        document.querySelector('.gt-root [data-drop][tabindex="0"]')?.focus({ preventScroll: true });
+      } else if (had && !active?.closest?.('.gt-hand, .gt-modal, .gt-chat')) {
+        document.querySelector('.gt-hand .gt-hand-card')?.focus({ preventScroll: true });
+      }
+    }, 60);
+    return () => clearTimeout(t);
+  }, [ix.card, ix.first, ix.hl]);
+
   // El modal de fin aparece cuando ya se vio la jugada ganadora
   useEffect(() => {
     if (!winner) { setShowEnd(false); return undefined; }
@@ -191,7 +221,7 @@ export const GameScreen = () => {
     const noTargets = !ix.tableTarget && ix.targets.length === 0;
     hint = {
       title: cardLabel(ix.card),
-      text: ix.card.kind === 'treatment' ? `${TREATMENT_HELP[ix.card.treatment]}. ${ix.hint}` : ix.hint,
+      text: ix.hint,
       warn: noTargets ? 'Ahora no tiene ningún destino: mejor descártala' : null,
     };
   } else if (ix.myTurn) hint = { title: '¡Tu turno!', text: 'Juega una carta (clic o arrástrala) o descarta' };
@@ -252,6 +282,8 @@ export const GameScreen = () => {
                 organTarget={ix.hl.bodies.has(me)}
                 onBody={ix.onBody}
                 className="gt-my-body"
+                ownerName={myGp.name}
+                mine
               />
             )}
           </div>
@@ -281,7 +313,7 @@ export const GameScreen = () => {
           {/* Mi avatar */}
           {myGp && (
             <div className="gt-me-avatar" style={{ right: M.avatar.right, top: M.avatar.y }}>
-              <Avatar info={infoOf(me)} gp={myGp} size={M.avatar.size} timer={myGp.isTurn ? timer : null} isMe nameSide="left" />
+              <Avatar info={infoOf(me)} gp={myGp} size={M.avatar.size} timer={myGp.isTurn ? timer : null} isMe nameSide="left" nameMax={M.avatar.nameMax} />
             </div>
           )}
 
@@ -362,6 +394,13 @@ export const GameScreen = () => {
 
           <FxLayer />
           <TurnBanner />
+
+          {/* Celular en vertical: la mesa necesita la pantalla acostada (lo muestra el CSS) */}
+          <div className="gt-rotate" role="status">
+            <div className="gt-rotate-phone" aria-hidden />
+            <strong>Gira tu teléfono</strong>
+            <span>La mesa de Roña se juega con la pantalla en horizontal</span>
+          </div>
 
           <ConfirmDialog
             open={ix.confirmGlove}

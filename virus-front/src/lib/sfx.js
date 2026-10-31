@@ -1,6 +1,7 @@
 // Efectos de sonido sintetizados con WebAudio (sin archivos de audio).
 // Uso: import { sfx } from '../lib/sfx'; sfx.play();
-// El silencio se guarda en localStorage['rona.muted'].
+// El silencio se guarda en localStorage['rona.muted'] y es el ÚNICO de la app: la música del lobby
+// (features/lobby/music.jsx) lo lee de aquí y se entera de los cambios con onMuteChange.
 
 const MUTE_KEY = 'rona.muted';
 

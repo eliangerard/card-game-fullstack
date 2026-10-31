@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import { Server } from 'socket.io';
-import { toClientError } from './errors.js';
+import { toClientError, fail } from './errors.js';
 import { SessionStore, defaultProfile } from './sessions.js';
 import { RoomManager } from './rooms.js';
 import { parseProfile, parseProfileLoose, parseToken, isPlainObject } from './validate.js';
@@ -19,6 +19,17 @@ const envInt = (name, def) => {
 // Límite de eventos por socket (antiflood general, aparte del límite del chat)
 const FLOOD_MAX = 40;
 const FLOOD_WINDOW_MS = 2000;
+
+// Topes por IP contra quien abre conexiones/sesiones/salas en bucle (configurables en opts.limits)
+const DEFAULT_LIMITS = {
+  maxConnectionsPerIp: 20, // sockets abiertos a la vez
+  sessionsPerIpPerMin: 20, // sesiones nuevas (hello sin token válido) por minuto
+  maxRoomsPerIp: 8, // salas vivas creadas desde la misma IP
+};
+const SESSION_WINDOW_MS = 60_000;
+// Sesiones desconectadas y sin sala: se borran tras este tiempo (antes 6 h)
+const SESSION_IDLE_MS = 30 * 60 * 1000;
+const PRUNE_EVERY_MS = 5 * 60 * 1000;
 
 function makeLogger(enabled) {
   const stamp = () => new Date().toISOString().slice(11, 19);
@@ -42,6 +53,8 @@ function makeLogger(enabled) {
  * @param {boolean} [opts.fixedSeats]          no barajar asientos al empezar (tests)
  * @param {string}  [opts.clientOrigin]        CORS; por defecto cualquier origen
  * @param {boolean} [opts.log]                 logs en consola
+ * @param {object}  [opts.limits]              topes por IP (ver DEFAULT_LIMITS)
+ * @param {boolean} [opts.trustProxy]          tomar la IP de X-Forwarded-For (TRUST_PROXY=1; sólo detrás de un proxy propio)
  */
 export function createServer(opts = {}) {
   const timing = {
@@ -54,6 +67,14 @@ export function createServer(opts = {}) {
     fixedSeats: !!opts.fixedSeats,
   };
   const graceMs = opts.graceMs ?? envInt('GRACE_MS', 60_000);
+  // 0 en una variable desactiva ese tope (útil para pruebas de carga desde una sola IP)
+  const limits = {
+    maxConnectionsPerIp: envInt('MAX_CONNECTIONS_PER_IP', DEFAULT_LIMITS.maxConnectionsPerIp),
+    sessionsPerIpPerMin: envInt('SESSIONS_PER_IP_PER_MIN', DEFAULT_LIMITS.sessionsPerIpPerMin),
+    maxRoomsPerIp: envInt('MAX_ROOMS_PER_IP', DEFAULT_LIMITS.maxRoomsPerIp),
+    ...(opts.limits || {}),
+  };
+  const trustProxy = opts.trustProxy ?? process.env.TRUST_PROXY === '1';
   const log = makeLogger(opts.log ?? process.env.LOG !== '0');
 
   const originSetting = opts.clientOrigin ?? process.env.CLIENT_ORIGIN;
@@ -66,6 +87,8 @@ export function createServer(opts = {}) {
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, {
     cors: { origin, methods: ['GET', 'POST'] },
+    // Un mensaje de más de 16 KB hace que Socket.IO corte la conexión sin ack (es lo esperado:
+    // ningún evento legítimo se acerca; el chat tiene tope de 200 caracteres)
     maxHttpBufferSize: 16 * 1024,
   });
 
@@ -76,7 +99,48 @@ export function createServer(opts = {}) {
     log,
     onGraceExpired: (session) => rooms.onGraceExpired(session),
   });
-  rooms = new RoomManager({ io, sessions, timing, log });
+  rooms = new RoomManager({ io, sessions, timing, log, limits });
+
+  // ---------- topes por IP ----------
+
+  const ipOf = (socket) => {
+    if (trustProxy) {
+      const fwd = socket.handshake.headers['x-forwarded-for'];
+      if (typeof fwd === 'string' && fwd.trim()) return fwd.split(',')[0].trim();
+    }
+    return socket.handshake.address || '';
+  };
+  const connectionsByIp = new Map(); // ip -> sockets abiertos
+  const sessionsByIp = new Map(); // ip -> marcas de tiempo de sesiones creadas
+
+  io.use((socket, next) => {
+    const ip = ipOf(socket);
+    const n = connectionsByIp.get(ip) || 0;
+    if (limits.maxConnectionsPerIp && n >= limits.maxConnectionsPerIp) {
+      log.warn(`Conexión rechazada: ${ip} ya tiene ${n} abiertas`);
+      return next(new Error('TOO_MANY_CONNECTIONS'));
+    }
+    connectionsByIp.set(ip, n + 1);
+    socket.data.ip = ip;
+    socket.once('disconnect', () => {
+      const left = (connectionsByIp.get(ip) || 1) - 1;
+      if (left > 0) connectionsByIp.set(ip, left);
+      else connectionsByIp.delete(ip);
+    });
+    next();
+  });
+
+  // Registra una sesión nueva para la IP; lanza RATE_LIMITED si ya creó demasiadas en el último minuto
+  const takeSessionSlot = (ip) => {
+    const now = Date.now();
+    const times = (sessionsByIp.get(ip) || []).filter((t) => now - t < SESSION_WINDOW_MS);
+    if (limits.sessionsPerIpPerMin && times.length >= limits.sessionsPerIpPerMin) {
+      sessionsByIp.set(ip, times);
+      fail('RATE_LIMITED', 'Demasiadas sesiones nuevas desde tu red, espera un minuto');
+    }
+    times.push(now);
+    sessionsByIp.set(ip, times);
+  };
 
   app.get('/health', (req, res) => res.json({ ok: true }));
   app.get('/rooms', (req, res) => res.json(rooms.list()));
@@ -127,13 +191,20 @@ export function createServer(opts = {}) {
     handle('session:hello', (payload) => {
       const p = isPlainObject(payload) ? payload : {};
       const token = parseToken(p.token);
-      let session = sessions.getByToken(token);
+      const current = sessions.getBySocket(socket.id);
+      // Un socket tiene una sola sesión: sin token válido se reutiliza la que ya tiene
+      // (antes se creaba otra y la anterior quedaba de anfitriona fantasma de su sala)
+      let session = sessions.getByToken(token) || current;
       const restored = !!session;
-      if (!session) session = sessions.create(parseProfileLoose(p.profile, defaultProfile()));
-      else if (p.profile !== undefined) session.profile = parseProfileLoose(p.profile, session.profile);
+      if (!session) {
+        takeSessionSlot(socket.data.ip);
+        session = sessions.create(parseProfileLoose(p.profile, defaultProfile()), { ip: socket.data.ip });
+      } else if (p.profile !== undefined) {
+        session.profile = parseProfileLoose(p.profile, session.profile);
+      }
+      session.ip = socket.data.ip;
 
       // Si este socket ya era de otra sesión, se suelta de ella y de los canales de su sala
-      const current = sessions.getBySocket(socket.id);
       const switching = current && current !== session ? current : null;
       if (switching) {
         for (const r of socket.rooms) if (r.startsWith('room:')) socket.leave(r);
@@ -188,9 +259,13 @@ export function createServer(opts = {}) {
 
   // Limpieza periódica de sesiones viejas sin sala
   const pruneTimer = setInterval(() => {
-    const n = sessions.prune(6 * 60 * 60 * 1000);
+    const n = sessions.prune(SESSION_IDLE_MS);
     if (n) log.info(`Se borraron ${n} sesiones inactivas`);
-  }, 10 * 60 * 1000);
+    const now = Date.now();
+    for (const [ip, times] of sessionsByIp) {
+      if (!times.some((t) => now - t < SESSION_WINDOW_MS)) sessionsByIp.delete(ip);
+    }
+  }, PRUNE_EVERY_MS);
   pruneTimer.unref();
 
   return {

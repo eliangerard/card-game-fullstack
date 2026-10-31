@@ -116,6 +116,7 @@ Todos los eventos cliente→servidor usan **ack**: `socket.emit(ev, payload, (re
 ### Sesión (para que una recarga no saque al jugador)
 - `session:hello` `{ token?: string, profile?: { name, avatar, color } }` → ack `{ ok, token, playerId, profile, roomId|null }`.
   Si el `token` es conocido, la sesión se recupera (mismo `playerId`, misma sala y mismo asiento en la partida) y el servidor reenvía `room:state` y `game:state`.
+  Un socket tiene una sola sesión: `hello` sin token, o con uno desconocido, en un socket que ya tiene sesión devuelve esa misma sesión.
   El cliente guarda `token` en `localStorage['rona.token']`.
 - `profile:update` `{ name, avatar, color }` → ack `{ ok, profile }`. `name` de 1 a 16 caracteres, `avatar` de 0 a 8, `color` en formato hex.
 
@@ -123,12 +124,13 @@ Todos los eventos cliente→servidor usan **ack**: `socket.emit(ev, payload, (re
 - `rooms:list` → ack `{ ok, rooms: RoomSummary[] }`. Además, el servidor difunde `rooms:update` `RoomSummary[]` a todos cuando algo cambia.
 - `RoomSummary = { id, name, playerCount, maxPlayers, status: 'lobby'|'playing'|'finished', hostName }`
 - `room:create` `{ name, maxPlayers?: 2..6 (default 6) }` → ack `{ ok, roomId }` (el creador entra solo y es el anfitrión).
-- `room:join` `{ roomId }` → ack `{ ok }`. Errores: `ROOM_NOT_FOUND`, `ROOM_FULL`, `ROOM_IN_GAME`, `ALREADY_IN_ROOM`.
+- `room:join` `{ roomId }` → ack `{ ok }`. Errores: `ROOM_NOT_FOUND`, `ROOM_FULL`, `ROOM_IN_GAME` (también si la partida ya terminó: sólo se entra en `lobby`), `ALREADY_IN_ROOM`.
 - `room:leave` → ack `{ ok }`. Si el anfitrión sale, el anfitrión pasa al siguiente humano. Una sala sin humanos se borra.
+  Fuera de una partida, si el anfitrión se desconecta el rol pasa enseguida al primer humano conectado (no lo recupera al volver).
 - `room:addBot` `{ level?: 'easy'|'normal' }` (sólo el anfitrión, en el lobby) → ack. Los bots tienen nombres divertidos y un avatar y color al azar.
 - `room:kick` `{ playerId }` (sólo el anfitrión, en el lobby; sirve también para quitar bots).
 - `room:start` (sólo el anfitrión, con 2 a 6 jugadores) → ack. Errores: `NOT_HOST`, `NOT_ENOUGH_PLAYERS`.
-- `room:chat` `{ text }` (de 1 a 200 caracteres; ráfagas limitadas a 5 por cada 5 s).
+- `room:chat` `{ text }` (de 1 a 200 caracteres; ráfagas limitadas a 5 por cada 5 s, por sesión: salir y volver no reinicia el límite).
 - `room:rematch` (sólo el anfitrión, con la partida terminada) → la sala vuelve al lobby con los mismos jugadores.
 
 Servidor → cliente:
@@ -145,6 +147,14 @@ Tiempos:
 - Los bots actúan tras 900–1600 ms de "pensar".
 - Un jugador desconectado conserva su asiento 60 s. Si no vuelve, `removePlayer` lo saca. Mientras está desconectado, sus turnos se resuelven por timeout, pero de 8 s y no de 40 s.
 - Al terminar una partida la sala pasa a `finished` y el anfitrión puede pedir `room:rematch`.
+
+### Límites contra abusos
+- Más de 40 eventos en 2 s por socket → `RATE_LIMITED`.
+- Por IP (configurables; `0` desactiva el tope): 20 conexiones abiertas a la vez (`MAX_CONNECTIONS_PER_IP`; la de más se rechaza con `connect_error` `TOO_MANY_CONNECTIONS`), 20 sesiones nuevas por minuto (`SESSIONS_PER_IP_PER_MIN`) y 8 salas abiertas (`MAX_ROOMS_PER_IP`); estos dos responden `RATE_LIMITED`. Detrás de un proxy propio, `TRUST_PROXY=1` toma la IP de `X-Forwarded-For`.
+- Unirse o crear salas: 6 por sesión cada 30 s (`RATE_LIMITED`).
+- Un mensaje de más de 16 KB corta la conexión sin ack (`maxHttpBufferSize` de Socket.IO).
+- Reconectar en tu propio turno da margen (`RECONNECT_TURN_MS`) una sola vez por turno y como mucho 3 veces por partida.
+- Las sesiones desconectadas y sin sala se borran a los 30 min.
 
 ### HTTP
 - `GET /health` → `{ ok: true }`

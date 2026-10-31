@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GameCard, CardBack } from './GameCard';
 import logo from '../../assets/roña.png';
+import { pressable } from './a11y';
 
 // Inclinación "aleatoria" pero estable para cada carta del descarte
 const tiltOf = (id = '') => {
@@ -22,7 +23,7 @@ export const CenterPiles = memo(function CenterPiles({ center, deckCount, discar
       className={`gt-center ${tableTarget ? 'is-target' : ''} ${hover === 'table' ? 'is-hover' : ''}`}
       style={{ left: center.x, top: center.y, width: center.w, height: center.h }}
       data-drop={tableTarget ? 'table' : undefined}
-      onClick={tableTarget ? onTable : undefined}
+      {...pressable(tableTarget ? onTable : null, 'Jugar la carta en la mesa')}
     >
       <img className="gt-center-logo" src={logo} alt="" draggable={false} style={{ height: Math.min(center.h * 0.9, center.w * 0.3) }} />
 
